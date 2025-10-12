@@ -1,0 +1,16 @@
+name = "Repositum"
+uuid = "24605107-cf83-494d-a066-bcc4fc64ba48"
+version = "0.1.0"
+authors = ["Luke Bemish <lukebemish@lukebemish.dev>"]
+
+[deps]
+HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+JWTs = "d850fbd6-035d-5a70-a269-1ca2e636ac6c"
+Mux = "a975b10e-0019-58db-a62f-e48ff68538c9"
+
+[compat]
+HTTP = "1.10.19"
+JSON = "0.21.4"
+JWTs = "0.3.1"
+Mux = "1.0.2"

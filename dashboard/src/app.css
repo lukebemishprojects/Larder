@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+#root {
+    display: contents;
+}
+
+@theme {
+    --color-bg-150: oklch(94.9% 0.010 251.702);
+    --color-bg-350: oklch(78.7% 0.031 254.841);
+}
+
+@utility bg-slate-150 {
+    background-color: var(--color-bg-150);
+}
+
+@utility bg-slate-350 {
+    background-color: var(--color-bg-350);
+}
