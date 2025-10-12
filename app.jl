@@ -1,7 +1,7 @@
 module App
 
 using Mux
-using Repositum
+using Loggerhead
 
 appenv = get(ENV, "APP_ENV", "dev")
 
@@ -9,6 +9,6 @@ dashboard = if appenv == "dev"
     run(Cmd(`bash generate.sh`, env=("APP_ENV" => appenv, "PATH" => ENV["PATH"])), wait = false)
 end
 
-wait(serve(Repositum.app(appenv)))
+wait(serve(Loggerhead.app(appenv)))
 
 end

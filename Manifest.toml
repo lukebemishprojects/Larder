@@ -239,7 +239,7 @@ deps = ["SHA"]
 uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 version = "1.11.0"
 
-[[deps.Repositum]]
+[[deps.Loggerhead]]
 deps = ["HTTP", "JWTs", "Mux"]
 path = "."
 uuid = "24605107-cf83-494d-a066-bcc4fc64ba48"

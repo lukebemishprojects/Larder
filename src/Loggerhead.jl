@@ -1,4 +1,4 @@
-module Repositum
+module Loggerhead
 
 using Mux
 using JSON
