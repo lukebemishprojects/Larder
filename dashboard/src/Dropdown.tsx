@@ -4,7 +4,7 @@ import { createSignal, Show, For } from 'solid-js';
 export interface DropdownEntry {
 	visible?: boolean
 	value: JSX.Element
-	//action: () => Promise<void>
+	action: () => Promise<void>
 }
 
 export function Dropdown(props: { children: JSX.Element[], entries: DropdownEntry[], classes: string, dropdownClasses?: string, entryClasses?: string[], left?: boolean }) {
@@ -44,7 +44,7 @@ export function Dropdown(props: { children: JSX.Element[], entries: DropdownEntr
 							<Show when={entry.visible === undefined || entry.visible}>
 								<button onclick={async () => {
 										setDropdownVisible(false)
-										//await entry.action()
+										await entry.action()
 								}} class={
 										["block", "px-4", "text-sm", "hover:bg-slate-150", "cursor-pointer", "w-full", "text-left", "py-2"].concat(entryClasses).join(" ")
 								} role="menuitem">{entry.value}</button>

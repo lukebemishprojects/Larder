@@ -8,9 +8,11 @@ HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 JWTs = "d850fbd6-035d-5a70-a269-1ca2e636ac6c"
 Mux = "a975b10e-0019-58db-a62f-e48ff68538c9"
+SearchLight = "340e8cb6-72eb-11e8-37ce-c97ebeb32050"
 
 [compat]
 HTTP = "1.10.19"
 JSON = "0.21.4"
 JWTs = "0.3.1"
 Mux = "1.0.2"
+SearchLight = "2.11.1"

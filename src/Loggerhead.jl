@@ -61,10 +61,11 @@ function app(
     admindashboardaud = get(ENV, "APP_ADMIN_JWT_AUD", nothing),
     jwtcertificateissuer = get(ENV, "APP_JWT_ISSUER", nothing),
     jwtcertificatelocation = get(ENV, "APP_JWT_CERT_LOCATION", nothing),
-    jwtheader = get(ENV, "APP_JWT_HEADER", nothing)
+    jwtheader = get(ENV, "APP_JWT_HEADER", nothing),
+    signout = get(ENV, "APP_SIGNOUT_URL", nothing)
 )
 
-    if appenv != "dev" && any(isnothing, [dashboardaud, admindashboardaud, jwtcertificateissuer, jwtcertificatelocation, jwtheader])
+    if appenv != "dev" && any(isnothing, [dashboardaud, admindashboardaud, jwtcertificateissuer, jwtcertificatelocation, jwtheader, signout])
         error("In production, JWT header validation must be set up for the dashboard and admin dashboard to determine identity!")
     end
 
@@ -74,6 +75,10 @@ function app(
         appenv == "dev" ? dummyjwt("dashboard/") : jwt("dashboard/"; aud = dashboardaud, iss = jwtcertificateissuer, location = jwtcertificatelocation, header = jwtheader),
         page("dashboard/api/whoami", req -> jsonresponse(req[:jwt_identity])),
         route("dashboard/api", Mux.notfound()),
+        page("dashboard/logout/", isnothing(signout) ? Mux.notfound("Signing out doesn't make sense in dev!") : respond(Dict(
+            :status => 302,
+            :headers => [("Location", signout)]
+        ))),
         files("dashboard/", "dashboard/dist/"),
         Mux.notfound()
     )
