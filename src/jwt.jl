@@ -1,8 +1,12 @@
 using JWTs
 using HTTP
 
+@enum Permission allowdashboard allowadmindashboard
+
 struct JwtIdentity
     email::String
+    # TODO: use "sub" field of JWT for identity instead of email?
+    permissions::Set{Permission}
 end
 
 function within(path, req)
@@ -13,12 +17,12 @@ end
 
 function dummyjwt(path)
     return (rest, req) -> if (within(path, req))
-        req[:jwt_identity] = JwtIdentity("xyz@example.org")
+        req[:jwt_identity] = JwtIdentity("xyz@example.org", Set([allowdashboard, allowadmindashboard]))
         rest(req)
     else rest(req) end
 end
 
-function jwt(path; aud, iss, location, header)
+function jwt(path; aud, iss, location, header, permissions)
     keyset = JWKSet(location)
     return (rest, req) -> if (within(path, req))
         if haskey(req, :jwt_identity)
@@ -37,7 +41,8 @@ function jwt(path; aud, iss, location, header)
         if aud != jwtbody.aud || iss != jwtbody.iss
             return unauthorized()
         end
-        req[:jwt_identity] = JwtIdentity(jwtbody.email)
+        # TODO: Check exp time
+        req[:jwt_identity] = JwtIdentity(jwtbody.email, permissions)
         return rest(req)
     else rest(req) end
 end

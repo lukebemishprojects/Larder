@@ -1,0 +1,23 @@
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:17-alpine
+    restart: unless-stopped
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_USER: larder
+      POSTGRES_PASSWORD: larder
+      POSTGRES_DB: larder
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U listmonk"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    volumes:
+      - type: volume
+        source: larder-data
+        target: /var/lib/postgresql/data
+
+volumes:
+  larder-data:

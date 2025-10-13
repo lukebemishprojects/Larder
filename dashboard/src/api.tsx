@@ -1,7 +1,12 @@
 import { z } from 'zod';
 
 export async function fetchJSON<S extends z.ZodObject>(url: string, schema: S): Promise<z.infer<S>> {
-    const response = await fetch(url).then((response) => response.json());
+    const response = await fetch(url).then((response) => {
+        if (!response.ok) {
+            throw new Error(`Status ${response.status}, ${response.statusText}`);
+        }
+        return response.json();
+    });
     return schema.parse(response);
 }
 
