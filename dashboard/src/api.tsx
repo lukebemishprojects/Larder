@@ -11,6 +11,7 @@ export async function fetchJSON<S extends z.ZodObject>(url: string, schema: S): 
 }
 
 export const User = z.object({
-    email: z.email()
+    email: z.email(),
+    id: z.uuid()
 });
 export type User = z.infer<typeof User>;

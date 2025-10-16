@@ -18,6 +18,7 @@ USER app
 
 # copy the full app and precompile
 COPY --chown=app:app src /home/app/${APP}/
+COPY --chown=app:app LarderORM /home/app/${APP}/
 COPY --chown=app:app *.toml precompile.jl /home/app/${APP}/
 COPY --chown=app:app dashboard/dist /home/app/${APP}/dashboard/
 RUN julia --project -e 'using Pkg; Pkg.precompile();'
@@ -28,4 +29,4 @@ RUN julia --project precompile.jl
 ENV DOCKER="true"
 
 # run app
-ENTRYPOINT ["julia", "--project", "--threads=auto", "app.jl"]
+ENTRYPOINT ["julia", "--project", "--threads=auto", "-m", "Larder"]

@@ -10,7 +10,7 @@ const root = document.getElementById('root');
 
 render(() => <App entries={[
     new AppInternalEntry("Account information", () => "Account information", (context) => <>
-    <p>{context.identity()!.email} <span class="font-mono text-xs text-slate-600">(TODO-USER-UUID-GOES-HERE)</span></p>
+    <p>{context.identity()!.email} <span class="font-mono text-xs text-slate-600">({context.identity()!.id})</span></p>
     </>),
     new AppInternalEntry("Namespaces", () => "Namespaces", () => <>
     </>),

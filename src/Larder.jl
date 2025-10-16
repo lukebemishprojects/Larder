@@ -3,8 +3,8 @@ module Larder
 using Mux
 using JSON
 
-include("jwt.jl")
 include("api.jl")
+include("jwt.jl")
 
 mimetypes = Dict(
     ".json" => "application/json",
@@ -56,27 +56,45 @@ end
 fresp(f) =
     endswith(f, "/") ? fileresponse(joinpath(f, "index.html")) : fileresponse(f)
 
-function app()
+function (@main)(args:: Vector{String}=ARGS)
+    apicontext = api.context()
+    server = serve(Larder.app(apicontext); on_shutdown=()->close(apicontext))
+
+    toclose = Ref{Any}(server)
+    atexit() do
+        closable = toclose[]
+        if !isnothing(closable)
+            close(closable)
+        end
+    end
+
+    try
+        wait(server)
+    finally
+        close(server)
+    end
+end
+
+function app(apicontext)
     appenv = get(ENV, "LARDER_ENV", "prod")
     dashboardaud = get(ENV, "LARDER_JWT_AUD", nothing)
     admindashboardaud = get(ENV, "LARDER_ADMIN_JWT_AUD", nothing)
-    jwtcertificateissuer = get(ENV, "LARDER_JWT_ISSUER", nothing)
     jwtcertificatelocation = get(ENV, "LARDER_JWT_CERT_LOCATION", nothing)
     jwtheader = get(ENV, "LARDER_JWT_HEADER", nothing)
     signout = get(ENV, "LARDER_SIGNOUT_URL", nothing)
 
-    if appenv != "dev" && any(isnothing, [dashboardaud, admindashboardaud, jwtcertificateissuer, jwtcertificatelocation, jwtheader, signout])
+    if appenv != "dev" && any(isnothing, [dashboardaud, admindashboardaud, jwtcertificatelocation, jwtheader, signout])
         error("In production, JWT header validation must be set up for the dashboard and admin dashboard to determine identity!")
     end
 
     function apipage(path, handler)
-        return page(path, req -> jsonresponse(handler(req)))
+        return page(path, req -> jsonresponse(handler(req; context=apicontext)))
     end
 
     @app app = (
         appenv == "dev" ? Mux.defaults : Mux.prod_defaults,
-        appenv == "dev" ? dummyjwt("dashboard/admin/") : jwt("dashboard/admin/"; aud = admindashboardaud, iss = jwtcertificateissuer, location = jwtcertificatelocation, header = jwtheader, permissions = Set([allowadmindashboard, allowdashboard])),
-        appenv == "dev" ? dummyjwt("dashboard/") : jwt("dashboard/"; aud = dashboardaud, iss = jwtcertificateissuer, location = jwtcertificatelocation, header = jwtheader, permissions = Set([allowdashboard])),
+        appenv == "dev" ? dummyjwt("dashboard/admin/"; context=apicontext) : jwt("dashboard/admin/"; aud = admindashboardaud, location = jwtcertificatelocation, header = jwtheader, permissions = Set([allowadmindashboard, allowdashboard]), context=apicontext),
+        appenv == "dev" ? dummyjwt("dashboard/"; context=apicontext) : jwt("dashboard/"; aud = dashboardaud, location = jwtcertificatelocation, header = jwtheader, permissions = Set([allowdashboard]), context=apicontext),
         apipage("dashboard/api/whoami", api.whoami),
         route("dashboard/api", Mux.notfound()),
         page("dashboard/logout/", isnothing(signout) ? Mux.notfound("Signing out doesn't make sense in dev!") : respond(Dict(
