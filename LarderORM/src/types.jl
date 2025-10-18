@@ -1,33 +1,39 @@
 using Dates
 using UUIDs
 
-export representation, encode, decode, VarChar
+export representation, encode, decode, VarChar, StructuredColumns
 
 representation(::Type{T}) where {T} = (Representation("varchar", false),)
 representation(::Type{String}) = (Representation("varchar", false),)
-representation(::Type{Identifier{T}}) where T <: Model = representation(fieldtype(T, StructTypes.idproperty(T)))
+representation(::Type{Identifier{T}}) where T <: Model = tuple(Iterators.flatten(representation(fieldtype(T, property)) for property ∈ uniqueidentifier(T))...)
 representation(::Type{Union{T, Missing}}) where T = map(representation(T)) do r Representation(r.type, true) end
 representation(::Type{Union{T, Nothing}}) where T = map(representation(T)) do r Representation(r.type, true) end
 representation(::Type{T}) where T <: Tuple = tuple(Iterators.flatten(representation(t) for t ∈ fieldtypes(T))...)
 
 encode(x::T, ::Type{T}) where T = (string(x),)
 encode(x::String, ::Type{String}) = (x,)
-encode(x::Identifier{T}, ::Type{Identifier{T}}) where T <: Model = encode(x.value, fieldtype(T, StructTypes.idproperty(T)))
+encode(x::Identifier{T}, ::Type{Identifier{T}}) where T <: Model = begin
+    identifiertype = Tuple{(fieldtype(T, property) for property ∈ uniqueidentifier(T))...}
+    encode(x.values, identifiertype)
+end
 encode(x::T, ::Type{Union{T, Missing}}) where T = encode(x, T)
-encode(::Missing, ::Type{Union{T, Missing}}) where T = (missing,)
+encode(::Missing, ::Type{Union{T, Missing}}) where T = ntuple(i->missing, length(representation(T)))
 encode(x::T, ::Type{Union{T, Nothing}}) where T = encode(x, T)
-encode(::Nothing, ::Type{Union{T, Nothing}}) where T = (missing,)
+encode(::Nothing, ::Type{Union{T, Nothing}}) where T = ntuple(i->missing, length(representation(T)))
 @generated encode(x::T, ::Type{T}) where T <: Tuple = begin
     Expr(:tuple, (
         :(encode(x[$i], $(r))...) for (i, r) ∈ enumerate(fieldtypes(T))
     )...)
 end
 
-decode(x::Tuple{String}, ::Type{T}) where T = parse(T, x[1])
+decode(x::Tuple, ::Type{T}) where T = parse(T, x[1])
 decode(x::Tuple{String}, ::Type{String}) = x[1]
-decode(x::Tuple, ::Type{Identifier{T}}) where T <: Model = ConcreteIdentifier{T}(decode(x, fieldtype(T, StructTypes.idproperty(T))))
-decode(::Tuple{Missing}, ::Type{<:Missing}) = missing
-decode(::Tuple{Missing}, ::Type{<:Nothing}) = nothing
+decode(x::Tuple, ::Type{Identifier{T}}) where T <: Model = begin
+    identifiertype = Tuple{(fieldtype(T, property) for property ∈ uniqueidentifier(T))...}
+    ConcreteIdentifier{T}(decode(x, identifiertype))
+end
+decode(::Tuple{Vararg{Missing}}, ::Type{<:Missing}) = missing
+decode(::Tuple{Vararg{Missing}}, ::Type{<:Nothing}) = nothing
 decode(x::Tuple{String}, ::Type{Union{T, Missing}}) where T = decode(x, T)
 decode(x::Tuple{String}, ::Type{Union{T, Nothing}}) where T = decode(x, T)
 decode(x::Tuple, ::Type{T}) where T <: Tuple = begin
@@ -51,6 +57,19 @@ end
 Base.string(v::VarChar) = v.value
 Base.parse(::Type{VarChar{N}}, s::String) where {N} = VarChar{N}(s)
 representation(::Type{VarChar{N}}) where {N} = (Representation("varchar($N)", false),)
+
+abstract type StructuredColumns end
+representation(::Type{S}) where S <: StructuredColumns = tuple(Iterators.flatten(representation(t) for t ∈ fieldtypes(S))...)
+encode(x::S, ::Type{S}) where S <: StructuredColumns = begin
+    delegatetype = Tuple{fieldtypes(S)...}
+    values = tuple(x.:($f) for f ∈ fieldnames(S))
+    encode(values, delegatetype)
+end
+decode(x::Tuple, ::Type{S}) where S <: StructuredColumns = begin
+    delegatetype = Tuple{fieldtypes(S)...}
+    values = decode(x, delegatetype)
+    S(values...)
+end
 
 macro directlyrepresented(r, T)
     quote

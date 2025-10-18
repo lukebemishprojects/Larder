@@ -7,7 +7,7 @@ export interface DropdownEntry {
 	action: () => Promise<void>
 }
 
-export function Dropdown(props: { children: JSX.Element[], entries: DropdownEntry[], classes: string, dropdownClasses?: string, entryClasses?: string[], left?: boolean }) {
+export function Dropdown(props: { children: JSX.Element, entries: DropdownEntry[], classes?: string, dropdownClasses?: string, entryClasses?: string[], left?: boolean }) {
 	const left = props.left ?? false
 	const dropdownClasses = props.dropdownClasses ?? []
 	const entryClasses = props.entryClasses ?? []
@@ -32,7 +32,7 @@ export function Dropdown(props: { children: JSX.Element[], entries: DropdownEntr
 				if (relatedTarget instanceof HTMLElement && currentTarget.contains(relatedTarget)) return
 				setDropdownVisible(false)
 		}}>
-			<button onclick={toggleDropdown} class={"inline-flex w-full justify-center cursor-pointer "+props.classes}>
+			<button onclick={toggleDropdown} class={"inline-flex w-full justify-center cursor-pointer "+(props.classes ?? "")}>
 				{props.children}
 			</button>
 			<Show when={dropdownVisible()}>

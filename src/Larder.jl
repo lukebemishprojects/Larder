@@ -36,25 +36,26 @@ end
 
 fileheaders(f) = Dict("Content-Type" => get(mimetypes, splitext(f)[2], "application/octet-stream"))
 
-fileresponse(f) = Dict(
+fileresponse(method, f) = method == "GET" ? Dict(
     :body => read(f),
+    :headers => fileheaders(f)
+) : Dict(
     :headers => fileheaders(f)
 )
 
-jsonresponse(obj) = Dict(
+jsonresponse(method, obj) = method == "GET" ? Dict(
     :body => JSON.json(obj),
+    :headers => Dict("Content-Type" => "application/json")
+) : Dict(
     :headers => Dict("Content-Type" => "application/json")
 )
 
 function files(root, from)
     branch(
         req -> !isnothing(validpath(root, joinpath(req[:path]...), from)),
-        req -> fresp(validpath(root, joinpath(req[:path]...), from))
+        req -> fileresponse(req[:method], validpath(root, joinpath(req[:path]...), from))
     )
 end
-
-fresp(f) =
-    endswith(f, "/") ? fileresponse(joinpath(f, "index.html")) : fileresponse(f)
 
 function (@main)(args:: Vector{String}=ARGS)
     apicontext = api.context()
@@ -75,6 +76,9 @@ function (@main)(args:: Vector{String}=ARGS)
     end
 end
 
+formethod(method::String, callback) = (rest, req) -> req[:method] == method ? callback(rest, req) : rest(req)
+formethods(methods::Vector{String}, callback) = (rest, req) -> in(req[:method], methods) ? callback(rest, req) : rest(req)
+
 function app(apicontext)
     appenv = get(ENV, "LARDER_ENV", "prod")
     dashboardaud = get(ENV, "LARDER_JWT_AUD", nothing)
@@ -88,20 +92,41 @@ function app(apicontext)
     end
 
     function apipage(path, handler)
-        return page(path, req -> jsonresponse(handler(req; context=apicontext)))
+        return page(path, req -> try
+            val = handler(req; context=apicontext)
+            jsonresponse(req[:method], val)
+        catch e
+            if e isa api.InvalidRequestError
+                mux(status(400), jsonresponse(req[:method], Dict("error" => e.msg)))(req)
+            elseif e isa api.NotAuthorizedError
+                mux(status(401), respond("Unauthorized"))(req)
+            else
+                rethrow(e)
+            end
+        end)
     end
 
     @app app = (
         appenv == "dev" ? Mux.defaults : Mux.prod_defaults,
-        appenv == "dev" ? dummyjwt("dashboard/admin/"; context=apicontext) : jwt("dashboard/admin/"; aud = admindashboardaud, location = jwtcertificatelocation, header = jwtheader, permissions = Set([allowadmindashboard, allowdashboard]), context=apicontext),
-        appenv == "dev" ? dummyjwt("dashboard/"; context=apicontext) : jwt("dashboard/"; aud = dashboardaud, location = jwtcertificatelocation, header = jwtheader, permissions = Set([allowdashboard]), context=apicontext),
-        apipage("dashboard/api/whoami", api.whoami),
+        appenv == "dev" ? dummyjwt("dashboard/admin/"; context=apicontext) : jwt("dashboard/admin/"; aud = admindashboardaud, location = jwtcertificatelocation, header = jwtheader, permissions = Set([api.allowadmindashboard, api.allowdashboard]), context=apicontext),
+        appenv == "dev" ? dummyjwt("dashboard/"; context=apicontext) : jwt("dashboard/"; aud = dashboardaud, location = jwtcertificatelocation, header = jwtheader, permissions = Set([api.allowdashboard]), context=apicontext),
+        formethods(["GET", "HEAD"], Mux.stack(
+            apipage("dashboard/api/whoami", api.whoami),
+            apipage("dashboard/admin/api/listusers", api.listusers),
+            apipage("dashboard/api/namespaces/:user", api.listnamespaces),
+            page("dashboard/logout/", isnothing(signout) ? Mux.notfound("Signing out doesn't make sense in dev!") : respond(Dict(
+                :status => 302,
+                :headers => [("Location", signout)]
+            ))),
+        )),
+        formethod("POST", Mux.stack(
+            apipage("dashboard/admin/api/namespace/:user/:namespace", api.addnamespace),
+        )),
+        formethod("DELETE", Mux.stack(
+            apipage("dashboard/admin/api/namespace/:user/:namespace", api.removenamespace),
+        )),
         route("dashboard/api", Mux.notfound()),
-        page("dashboard/logout/", isnothing(signout) ? Mux.notfound("Signing out doesn't make sense in dev!") : respond(Dict(
-            :status => 302,
-            :headers => [("Location", signout)]
-        ))),
-        files("dashboard/", "dashboard/dist/"),
+        formethods(["GET", "HEAD"], files("dashboard/", "dashboard/dist/")),
         Mux.notfound()
     )
     return app

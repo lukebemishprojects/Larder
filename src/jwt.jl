@@ -1,12 +1,11 @@
 using JWTs
 using HTTP
 using UUIDs
-
-@enum Permission allowdashboard allowadmindashboard
+using Dates
 
 @kwdef struct JwtIdentity
     user::api.User
-    permissions::Set{Permission}
+    permissions::Set{api.Permission}
 end
 
 function within(path, req)
@@ -23,7 +22,7 @@ function dummyjwt(path; context)
                 dummyemail,
                 uuid5(uuid_iss, dummyemail)
             ), context),
-            permissions=Set([allowdashboard, allowadmindashboard])
+            permissions=Set([api.allowdashboard, api.allowadmindashboard])
         )
         rest(req)
     else rest(req) end
@@ -50,7 +49,9 @@ function jwt(path; context, aud, location, header, permissions)
         if aud != jwtbody.aud || iss != jwtbody.iss
             return unauthorized()
         end
-        # TODO: Check exp time
+        if !haskey(jwtbody, :exp) || unix2datetime(jwtbody.exp) < Dates.now(Dates.UTC)
+            return unauthorized()
+        end
         req[:jwt_identity] = JwtIdentity(;
             user = api.newuser(api.User(
                 jwtbody.email,

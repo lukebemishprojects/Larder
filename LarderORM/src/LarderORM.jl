@@ -4,7 +4,7 @@ import LibPQ
 using StructTypes
 using Tables
 
-export Model, Database, Identifier, Representation, constraints
+export Model, Database, Identifier, Representation, constraints, uniqueidentifier
 
 abstract type Database end
 
@@ -26,12 +26,21 @@ end
 abstract type Identifier{T <: Model} end
 
 struct ConcreteIdentifier{T <: Model} <: Identifier{T}
-    value
+    values::Tuple
+end
+
+function uniqueidentifier(::Type{T}) where T <: Model
+    idprop = StructTypes.idproperty(T)
+    idprop == :_ ? fieldnames(T) : (idprop,)
 end
 
 function Identifier{T}(t::T) where T <: Model
-    property = StructTypes.idproperty(T)
-    ConcreteIdentifier{T}(t.:($property))
+    properties = uniqueidentifier(T)
+    ConcreteIdentifier{T}(tuple((t.:($property) for property ∈ properties)...))
+end
+
+function Identifier{T}(values...) where T <: Model
+    ConcreteIdentifier{T}(values)
 end
 
 Identifier(t::T) where T <: Model = Identifier{T}(t)
@@ -138,7 +147,9 @@ fieldsbytype(::Type{T}) where {T <: Model} = [
 
 constraints(::Type{Identifier{T}}, columns) where T <: Model = begin
     [
-        "FOREIGN KEY ($(join(columns, " "))) REFERENCES $(tablename(T)) ($(join(dbcolnames(StructTypes.idproperty(T), fieldtype(T, StructTypes.idproperty(T))), " ")))"
+        "FOREIGN KEY ($(join(columns, ", "))) REFERENCES $(tablename(T)) ($(join(
+            (join(dbcolnames(property, fieldtype(T, property)), ", ") for property ∈ uniqueidentifier(T)), ", "
+        )))"
     ]
 end
 constraints(::Type{T}, columns) where T <: Tuple = begin
@@ -164,10 +175,11 @@ function schema(::Type{T}) where {T <: Model}
             cols = dbcolnames(f, r)
             map(constraints(r, cols)) do l "    $l" end
         end for (f, r) in fieldsbytype(T))...)...]
-        idprop = StructTypes.idproperty(T)
-        if idprop != :_
-            cols = dbcolnames(idprop, fieldtype(T, idprop))
-            push!(entries, "    UNIQUE ($(join(cols, " ")))")
+        idprops = uniqueidentifier(T)
+        if !isempty(idprops)
+            cols = (join(dbcolnames(prop, fieldtype(T, prop)), ", ") for prop ∈ idprops)
+            anynullable = any(r -> any(rep -> rep.nullable, representation(fieldtype(T, r))), idprops)
+            push!(entries, "    $(anynullable ? "UNIQUE" : "PRIMARY KEY") ($(join(cols, ", ")))")
         end
         join(entries, ",\n")
     end)
@@ -184,27 +196,35 @@ function translaterows(results, ::Type{T}) where T <: Model
     end
 end
 
-function selectmodels(db::PostgresDatabase, ::Type{T}, match::Vector{Pair{Symbol,Any}}) where T <: Model
+function selectmodels(db::PostgresDatabase, ::Type{T}, match::Vector{S} where S <: Pair{Symbol}) where T <: Model
     colnames = Iterators.flatten(dbcolnames(f, r) for (f, r) in fieldsbytype(T))
     whereclause = join(["$(dbcolnames(p[1], fieldtype(T, p[1]))[1]) = ?" for p ∈ match], " AND ")
     query = "SELECT $(join(colnames, ", ")) FROM $(tablename(T)) WHERE $whereclause;"
-    results = execute(db, query, ((p[2] for p ∈ match)...))
+    args = tuple(Iterators.flatten(encode(p[2], fieldtype(T, p[1])) for p ∈ match)...)
+    results = execute(db, query, args)
+    translaterows(results, T)
+end
+
+function selectmodels(db::PostgresDatabase, ::Type{T}) where T <: Model
+    colnames = Iterators.flatten(dbcolnames(f, r) for (f, r) in fieldsbytype(T))
+    query = "SELECT $(join(colnames, ", ")) FROM $(tablename(T));"
+    results = execute(db, query)
     translaterows(results, T)
 end
 
 function selectmodel(db::PostgresDatabase, id::Identifier{T}) where T <: Model
-    idprop = StructTypes.idproperty(T)
-    colnames = dbcolnames(idprop, fieldtype(T, idprop))
+    idprops = uniqueidentifier(T)
+    colnames = tuple(Iterators.flatten(dbcolnames(prop, fieldtype(T, prop)) for prop ∈ idprops)...)
     whereclause = join(map(colnames) do name "$name = ?" end, " AND ")
     query = "SELECT * FROM $(tablename(T)) WHERE $whereclause;"
-    results = execute(db, query, encode(id.value, fieldtype(T, idprop)))
+    results = execute(db, query, encode(id, Identifier{T}))
     rows = translaterows(results, T)
     length(rows) == 0 ? nothing : rows[1]
 end
 
 function updatemodel!(db::PostgresDatabase, value::T) where T <: Model
-    idprop = StructTypes.idproperty(T)
-    idcols = dbcolnames(idprop, fieldtype(T, idprop))
+    idprops = uniqueidentifier(T)
+    idcols = Iterators.flatten(dbcolnames(prop, fieldtype(T, prop)) for prop ∈ idprops)
     whereclause = join(map(idcols) do name "$name = ?" end, " AND ")
     setclauses = []
     args = []
@@ -217,7 +237,7 @@ function updatemodel!(db::PostgresDatabase, value::T) where T <: Model
         append!(args, encode(value.:($f), r))
     end
     query = "UPDATE $(tablename(T)) SET $(join(setclauses, ", ")) WHERE $whereclause;"
-    append!(args, encode(value.:($idprop), fieldtype(T, idprop)))
+    append!(args, encode(Identifier(value), Identifier{T}))
     execute(db, query, args)
 end
 
@@ -230,11 +250,11 @@ function deletemodel!(db::PostgresDatabase, value::T) where T <: Model
 end
 
 function deletemodel!(db::PostgresDatabase, id::Identifier{T}) where T <: Model
-    idprop = StructTypes.idproperty(T)
-    idcols = dbcolnames(idprop, fieldtype(T, idprop))
+    idprops = uniqueidentifier(T)
+    idcols = Iterators.flatten(dbcolnames(prop, fieldtype(T, prop)) for prop ∈ idprops)
     whereclause = join(map(idcols) do name "$name = ?" end, " AND ")
     query = "DELETE FROM $(tablename(T)) WHERE $whereclause;"
-    execute(db, query, encode(id.value, fieldtype(T, idprop)))
+    execute(db, query, encode(id, Identifier{T}))
 end
 
 function insertmodel!(db::PostgresDatabase, value::T) where T <: Model
