@@ -229,7 +229,7 @@ function updatemodel!(db::PostgresDatabase, value::T) where T <: Model
     setclauses = []
     args = []
     for (f, r) in fieldsbytype(T)
-        if f == idprop
+        if f ∈ idprops
             continue
         end
         cols = dbcolnames(f, r)

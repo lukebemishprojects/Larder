@@ -19,15 +19,6 @@ export async function postURL(url: string): Promise<void> {
     }
 }
 
-export async function deleteURL(url: string): Promise<void> {
-    const response = await fetch(url, {
-        method: 'DELETE',
-    });
-    if (!response.ok) {
-        throw new Error(`Status ${response.status}, ${response.statusText}`);
-    }
-}
-
 export const User = z.object({
     email: z.email(),
     id: z.uuid()
@@ -47,9 +38,14 @@ export const Users = ListResponse(User);
 export type Users = ListResponse<User>;
 
 export const Namespace = z.object({
-    namespace: z.string()
+    namespace: z.string(),
+    confirmed: z.boolean()
 });
 export type Namespace = z.infer<typeof Namespace>;
 
 export const Namespaces = ListResponse(Namespace);
 export type Namespaces = ListResponse<Namespace>;
+
+export function isNamespaceValid(namespace: string): boolean {
+    return /^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(namespace);
+}

@@ -90,5 +90,3 @@ end
 @directlyrepresented "date" Date
 @directlyrepresented "time" Time
 @directlyrepresented "uuid" UUID
-
-LibPQ.LIBPQ_TYPE_MAP[:uuid] = UUID

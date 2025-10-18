@@ -25,9 +25,11 @@ StructTypes.idproperty(::Type{User}) = :id
 struct UserNamespace <: Model
     id::Identifier{User}
     namespace::String
+    confirmed::Bool
 end
 
 LarderORM.tablename(::Type{UserNamespace}) = "usernamespaces"
+LarderORM.uniqueidentifier(::Type{UserNamespace}) = (:id, :namespace)
 
 struct Repository <: Model
     name::String
@@ -77,6 +79,10 @@ end
 struct NotAuthorizedError <: Exception
 end
 
+struct NotFoundError <: Exception
+    msg::String
+end
+
 listusers(req; context) = begin
     ListResponse(selectmodels(context.db, User))
 end
@@ -94,6 +100,8 @@ listnamespaces(req; context) = begin
     ListResponse(selectmodels(context.db, UserNamespace, [:id => Identifier{User}(uuid)]))
 end
 
+isvalidnamespace(namespace::AbstractString) = !isnothing(match(r"^[a-z0-9-]+(\.[a-z0-9-]+)*$", namespace))
+
 addnamespace(req; context) = begin
     namespace = req[:params][:namespace]
     uuid = tryparse(UUID, req[:params][:user])
@@ -103,11 +111,37 @@ addnamespace(req; context) = begin
     if isnothing(uuid)
         throw(InvalidRequestError("Invalid UUID: $user"))
     end
+    if !isvalidnamespace(namespace)
+        throw(InvalidRequestError("Invalid namespace name: $namespace"))
+    end
     user = Identifier{User}(uuid)
     transact(context.db) do db
-        existing = selectmodel(db, Identifier(UserNamespace(user, namespace)))
+        existing = selectmodel(db, Identifier(UserNamespace(user, namespace, true)))
         if isnothing(existing)
-            insertmodel!(db, UserNamespace(user, namespace))
+            insertmodel!(db, UserNamespace(user, namespace, true))
+        end
+    end
+    return Dict()
+end
+
+requestnamespace(req; context) = begin
+    namespace = req[:params][:namespace]
+    uuid = tryparse(UUID, req[:params][:user])
+    iam = whoami(req; context)
+    if isnothing(uuid)
+        throw(InvalidRequestError("Invalid UUID: $user"))
+    end
+    if iam.id != uuid
+        throw(NotAuthorizedError())
+    end
+    if !isvalidnamespace(namespace)
+        throw(InvalidRequestError("Invalid namespace name: $namespace"))
+    end
+    user = Identifier{User}(uuid)
+    transact(context.db) do db
+        existing = selectmodel(db, Identifier(UserNamespace(user, namespace, false)))
+        if isnothing(existing)
+            insertmodel!(db, UserNamespace(user, namespace, false))
         end
     end
     return Dict()
@@ -123,7 +157,27 @@ removenamespace(req; context) = begin
         throw(InvalidRequestError("Invalid UUID: $user"))
     end
     user = Identifier{User}(uuid)
-    deletemodel!(context.db, Identifier(UserNamespace(user, namespace)))
+    deletemodel!(context.db, Identifier(UserNamespace(user, namespace, false)))
+    return Dict()
+end
+
+confirmnamespace(req; context) = begin
+    namespace = req[:params][:namespace]
+    uuid = tryparse(UUID, req[:params][:user])
+    if !(allowadmindashboard in req[:jwt_identity].permissions)
+        throw(NotAuthorizedError())
+    end
+    if isnothing(uuid)
+        throw(InvalidRequestError("Invalid UUID: $user"))
+    end
+    user = Identifier{User}(uuid)
+    ns = selectmodel(context.db, Identifier(UserNamespace(user, namespace, false)))
+    if isnothing(ns)
+        throw(NotFoundError("Namespace not found"))
+    end
+    ns = ns::UserNamespace
+    ns = UserNamespace(ns.id, ns.namespace, true)
+    updatemodel!(context.db, ns)
     return Dict()
 end
 
@@ -139,6 +193,7 @@ const migrations = Migrations(
         CREATE TABLE IF NOT EXISTS usernamespaces (
             id uuid NOT NULL,
             namespace varchar NOT NULL,
+            confirmed boolean NOT NULL,
             FOREIGN KEY (id) REFERENCES users (id),
             PRIMARY KEY (id, namespace)
         );

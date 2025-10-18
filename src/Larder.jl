@@ -100,6 +100,8 @@ function app(apicontext)
                 mux(status(400), jsonresponse(req[:method], Dict("error" => e.msg)))(req)
             elseif e isa api.NotAuthorizedError
                 mux(status(401), respond("Unauthorized"))(req)
+            elseif e isa api.NotFoundError
+                mux(status(404), jsonresponse(req[:method], Dict("error" => e.msg)))(req)
             else
                 rethrow(e)
             end
@@ -111,19 +113,22 @@ function app(apicontext)
         appenv == "dev" ? dummyjwt("dashboard/admin/"; context=apicontext) : jwt("dashboard/admin/"; aud = admindashboardaud, location = jwtcertificatelocation, header = jwtheader, permissions = Set([api.allowadmindashboard, api.allowdashboard]), context=apicontext),
         appenv == "dev" ? dummyjwt("dashboard/"; context=apicontext) : jwt("dashboard/"; aud = dashboardaud, location = jwtcertificatelocation, header = jwtheader, permissions = Set([api.allowdashboard]), context=apicontext),
         formethods(["GET", "HEAD"], Mux.stack(
-            apipage("dashboard/api/whoami", api.whoami),
             apipage("dashboard/admin/api/listusers", api.listusers),
-            apipage("dashboard/api/namespaces/:user", api.listnamespaces),
+
+            apipage("dashboard/api/whoami", api.whoami),
+            apipage("dashboard/api/namespaces/:user/list", api.listnamespaces),
+
             page("dashboard/logout/", isnothing(signout) ? Mux.notfound("Signing out doesn't make sense in dev!") : respond(Dict(
                 :status => 302,
                 :headers => [("Location", signout)]
             ))),
         )),
         formethod("POST", Mux.stack(
-            apipage("dashboard/admin/api/namespace/:user/:namespace", api.addnamespace),
-        )),
-        formethod("DELETE", Mux.stack(
-            apipage("dashboard/admin/api/namespace/:user/:namespace", api.removenamespace),
+            apipage("dashboard/admin/api/namespaces/:user/create/:namespace", api.addnamespace),
+            apipage("dashboard/admin/api/namespaces/:user/confirm/:namespace", api.confirmnamespace),
+            apipage("dashboard/admin/api/namespaces/:user/delete/:namespace", api.removenamespace),
+
+            apipage("dashboard/api/namespaces/:user/request/:namespace", api.requestnamespace),
         )),
         route("dashboard/api", Mux.notfound()),
         formethods(["GET", "HEAD"], files("dashboard/", "dashboard/dist/")),

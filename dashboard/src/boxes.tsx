@@ -8,14 +8,6 @@ export function OuterBox(props: { children: JSX.Element }) {
     )
 }
 
-export function BoxHeader(props: { children: JSX.Element }) {
-    return (
-        <div class="bg-white shadow-sm rounded-lg p-2.5 block">
-            {props.children}
-        </div>
-    )
-}
-
 export function InnerHoverElements<T>(props: { basis: T[], foreach: (item: T) => JSX.Element }) {
     return <div class="block flex flex-col">
         <For each={props.basis}>
@@ -36,11 +28,9 @@ export function BoxWithHeader(props: { children: [JSX.Element, JSX.Element] }) {
     const [boxOpen, setBoxOpen] = createSignal(false);
     return (
         <OuterBox>
-            <BoxHeader>
-                <button class="cursor-pointer w-full" onclick={() => setBoxOpen(!boxOpen())}>
-                    {props.children[0]}
-                </button>
-            </BoxHeader>
+            <button class="bg-white shadow-sm rounded-lg p-2.5 block cursor-pointer" onclick={() => setBoxOpen(!boxOpen())}>
+                {props.children[0]}
+            </button>
             <Show when={boxOpen()}>
             <div class="py-2.5 block flex flex-col gap-2">
                 {props.children[1]}
