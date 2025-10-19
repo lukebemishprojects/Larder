@@ -5,6 +5,7 @@ using UUIDs
 import LibPQ
 using LarderORM
 using StructTypes
+using StructUtils
 
 @enum Permission allowdashboard allowadmindashboard
 
@@ -35,7 +36,7 @@ struct Repository <: Model
     name::String
     supportsmavendeploy::Bool
     supportspublishportal::Bool
-    expirationdays::Union{Nothing, Int32}
+    expirationdays::Int32
     mutable::Bool
 end
 
@@ -82,6 +83,10 @@ end
 struct NotFoundError <: Exception
     msg::String
 end
+
+parsebody(data::IO) = data
+parsebody(data::Vector{UInt8}) = String(data)
+getbody(req) = parsebody(req[:data])
 
 listusers(req; context) = begin
     ListResponse(selectmodels(context.db, User))
@@ -181,6 +186,79 @@ confirmnamespace(req; context) = begin
     return Dict()
 end
 
+const reservedpaths = Set(["api", "dashboard", "publish"])
+
+isvalidrepositoryname(name::AbstractString) = begin
+    !isnothing(match(r"^[a-z0-9._-]+$", name)) && !(name in reservedpaths)
+end
+
+updaterepository(req; context) = begin
+    repositoryname = req[:params][:repositoryname]
+    if !(allowadmindashboard in req[:jwt_identity].permissions)
+        throw(NotAuthorizedError())
+    end
+    if !isvalidrepositoryname(repositoryname)
+        throw(InvalidRequestError("Invalid repository name: $repositoryname"))
+    end
+    json = nothing
+    try
+        json = JSON.parse(getbody(req))
+    catch _
+        throw(InvalidRequestError("Invalid JSON body"))
+    end
+    if "name" in keys(json) && json["name"] != repositoryname
+        throw(InvalidRequestError("Repository name in URL and body do not match"))
+    end
+    json["name"] = repositoryname
+    repo = StructUtils.make(Repository, json)
+    if repo.expirationdays < 0
+        throw(InvalidRequestError("Expiration days must be non-negative"))
+    end
+    transact(context.db) do db
+        existing = selectmodel(db, Identifier(repo))
+        if isnothing(existing)
+            insertmodel!(db, repo)
+        elseif existing != repo
+            updatemodel!(db, repo)
+        end
+    end
+    return Dict()
+end
+
+removerepository(req; context) = begin
+    repositoryname = req[:params][:repositoryname]
+    if !(allowadmindashboard in req[:jwt_identity].permissions)
+        throw(NotAuthorizedError())
+    end
+    if !isvalidrepositoryname(repositoryname)
+        throw(InvalidRequestError("Invalid repository name: $repositoryname"))
+    end
+    deletemodel!(context.db, Identifier{Repository}(repositoryname))
+    return Dict()
+end
+
+getrepository(req; context) = begin
+    repositoryname = req[:params][:repositoryname]
+    if !(allowdashboard in req[:jwt_identity].permissions)
+        throw(NotAuthorizedError())
+    end
+    if !isvalidrepositoryname(repositoryname)
+        throw(InvalidRequestError("Invalid repository name: $repositoryname"))
+    end
+    repo = selectmodel(context.db, Identifier{Repository}(repositoryname))
+    if isnothing(repo)
+        throw(NotFoundError("Repository not found"))
+    end
+    return repo
+end
+
+listrepositories(req; context) = begin
+    if !(allowdashboard in req[:jwt_identity].permissions)
+        throw(NotAuthorizedError())
+    end
+    ListResponse(selectmodels(context.db, Repository))
+end
+
 const migrations = Migrations(
     1 => Migration(
         db -> execute(db, """
@@ -202,7 +280,7 @@ const migrations = Migrations(
             name varchar NOT NULL,
             supportsmavendeploy boolean NOT NULL,
             supportspublishportal boolean NOT NULL,
-            expirationdays integer,
+            expirationdays integer NOT NULL,
             mutable boolean NOT NULL,
             PRIMARY KEY (name)
         );

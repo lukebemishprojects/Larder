@@ -6,19 +6,49 @@ import { App, AppContext, AppExternalEntry, AppInternalEntry } from './App';
 
 import './app.css';
 import * as api from './api';
-import { createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
+import { createResource, createSignal, For, Show, useContext } from 'solid-js';
 import { BoxWithHeader, TextInputGroup } from './boxes';
+import { OrError, orErrorSignal } from './utils';
 
 const root = document.getElementById('root');
 
-function NamespaceList(context: AppContext) {
+function NamespaceList() {
+    const context = useContext(AppContext);
+
     const [namespaces, { mutate, refetch }] = createResource(async () => {
-        return await api.fetchJSON(`/dashboard/api/namespaces/${context.identity()?.id}/list`, api.Namespaces);
+        return await api.fetchJSON(`/dashboard/api/namespaces/${context!.identity.id}/list`, api.Namespaces);
     });
-    const [status, setStatus] = createSignal<{ status: "fine" } | { status: "error", err: any } | { status: "invalid" }>({ status: "fine" });
+    const [status, setStatus] = orErrorSignal();
     const [toRequest, setToRequest] = createSignal("");
     return (
         <>
+            <div class="flex flex-col gap-1">
+                <TextInputGroup type="text" placeholder="Request namespace" submit="Request" onsubmit={async () => {
+                    const namespaceName = toRequest();
+                    const validNamespace = api.isNamespaceValid(namespaceName);
+                    if (!validNamespace) {
+                        setStatus({ status: "error", err: "Not a valid namespace! Must be a valid all-lowercase reversed domain name." });
+                        return;
+                    }
+                    setStatus({ status: "ok" });
+                    setToRequest("");
+                    mutate((namespaces) => {
+                        return namespaces === undefined ? undefined : {
+                            values: [...namespaces.values, { namespace: namespaceName, confirmed: false }]
+                        };
+                    });
+                    try {
+                        await api.postURL(`/dashboard/api/namespaces/${context!.identity.id}/request/${namespaceName}`)
+                    } catch (err: any) {
+                        console.error(err);
+                        setStatus({ status: "error", err: `Error: ${err}` });
+                    }
+                    await refetch();
+                }} accessor={toRequest} setter={setToRequest} />
+                <div class="px-1">
+                    <OrError get={status} />
+                </div>
+            </div>
             <Show when={namespaces()}>
             <For each={namespaces()!.values}>
                 {(namespace) => <BoxWithHeader>
@@ -31,46 +61,20 @@ function NamespaceList(context: AppContext) {
                 </BoxWithHeader>}
             </For>
             </Show>
-            <div class="flex flex-col gap-1">
-                <TextInputGroup type="text" placeholder="Request namespace" submit="Request" onsubmit={async () => {
-                    const namespaceName = toRequest();
-                    const validNamespace = api.isNamespaceValid(namespaceName);
-                    if (!validNamespace) {
-                        setStatus({ status: "invalid" });
-                        return;
-                    }
-                    setStatus({ status: "fine" });
-                    setToRequest("");
-                    mutate((namespaces) => {
-                        return namespaces === undefined ? undefined : {
-                            values: [...namespaces.values, { namespace: namespaceName, confirmed: false }]
-                        };
-                    });
-                    try {
-                        await api.postURL(`/dashboard/api/namespaces/${context.identity()!.id}/request/${namespaceName}`)
-                    } catch (err: any) {
-                        console.error(err);
-                        setStatus({ status: "error", err: err });
-                    }
-                    await refetch();
-                }} accessor={toRequest} setter={setToRequest} />
-                <Switch>
-                    <Match when={status().status == "error"}>
-                        <div class="text-red-500 text-xs px-1">Error: {(status() as { err:any }).err}</div>
-                    </Match>
-                    <Match when={status().status == "invalid"}>
-                        <div class="text-red-500 text-xs px-1">Not a valid namespace! Must be a valid all-lowercase reversed domain name.</div>
-                    </Match>
-                </Switch>
-            </div>
         </>
     )
 }
 
+function AccountInfo() {
+    const context = useContext(AppContext);
+
+    return <>
+        <p>{context!.identity.email} <span class="font-mono text-xs text-slate-600">({context!.identity.id})</span></p>
+    </>
+}
+
 render(() => <App entries={[
-    new AppInternalEntry("Account information", () => "Account information", (context) => <>
-    <p>{context.identity()!.email} <span class="font-mono text-xs text-slate-600">({context.identity()!.id})</span></p>
-    </>),
+    new AppInternalEntry("Account information", () => "Account information", AccountInfo),
     new AppInternalEntry("Namespaces", () => "Namespaces", NamespaceList),
     new AppInternalEntry("Deployments", () => "Deployments", () => <>
     </>),

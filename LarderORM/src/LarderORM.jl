@@ -40,7 +40,8 @@ function Identifier{T}(t::T) where T <: Model
 end
 
 function Identifier{T}(values...) where T <: Model
-    ConcreteIdentifier{T}(values)
+    targettype = Tuple{(map(uniqueidentifier(T)) do prop fieldtype(T, prop) end)...}
+    ConcreteIdentifier{T}(convert(targettype, values))
 end
 
 Identifier(t::T) where T <: Model = Identifier{T}(t)

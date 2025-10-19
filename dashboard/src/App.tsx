@@ -1,15 +1,16 @@
 import type { JSX, Resource } from 'solid-js';
 import type { DropdownEntry } from './Dropdown';
-import { createResource, createSignal, Show, ErrorBoundary } from 'solid-js';
+import { createResource, createSignal, Show, ErrorBoundary, createContext } from 'solid-js';
 import { Dropdown } from './Dropdown';
 import * as api from './api';
 import { OuterBox } from './boxes';
+import { Dynamic } from 'solid-js/web';
 
 export class AppInternalEntry {
     constructor(
         public dropdownValue: JSX.Element,
-        public name: (context: AppContext) => JSX.Element,
-        public value: (context: AppContext) => JSX.Element
+        public name: () => JSX.Element,
+        public value: () => JSX.Element
     ) {}
 }
 
@@ -23,8 +24,9 @@ export class AppExternalEntry {
 export type AppEntry = AppInternalEntry | AppExternalEntry
 
 export interface AppContext {
-    identity: Resource<api.User>
+    identity: api.User
 }
+export const AppContext = createContext<AppContext>();
 
 export function App(props: { entries: AppEntry[] }) {
     const [ page, setPage ] = createSignal(0);
@@ -43,11 +45,8 @@ export function App(props: { entries: AppEntry[] }) {
     const [identity] = createResource(async () => {
         return await api.fetchJSON('/dashboard/api/whoami', api.User);
     })
-    const context: AppContext = {
-        identity: identity
-    }
     return (
-        <div class="bg-slate-200 text-slate-900 w-dvw h-dvh">
+        <div class="bg-slate-200 text-slate-900 w-100% h-100% min-h-dvh">
         <div class="w-full h-full flex justify-center">
         <div class="w-2/3 h-full flex flex-col gap-5 p-5">
             <ErrorBoundary fallback={(error) => {
@@ -58,9 +57,13 @@ export function App(props: { entries: AppEntry[] }) {
                     </div>
                 </OuterBox>)
             }}>
-            <Show when={identity()}>
+            <Show when={identity()}><AppContext.Provider value={{
+                identity: identity()!
+            }}>
             <div class="w-full flex flex-row gap-5 items-center">
-                <div class="text-5xl">{(props.entries[page()] as AppInternalEntry).name(context)}</div>
+                <div class="text-5xl">
+                    <Dynamic component={(props.entries[page()] as AppInternalEntry).name} />
+                </div>
                 <div class="flex-1"></div>
                 <Dropdown classes="py-2 px-3 rounded-md bg-white font-semibold border-1 hover:bg-slate-150" entries={dropdownEntries}>
                     {identity()!.email}
@@ -70,8 +73,8 @@ export function App(props: { entries: AppEntry[] }) {
                 </Dropdown>
             </div>
             <div class="w-full h-0 border-b-2"></div>
-            {(props.entries[page()] as AppInternalEntry).value(context)}
-            </Show>
+            <Dynamic component={(props.entries[page()] as AppInternalEntry).value} />
+            </AppContext.Provider></Show>
             </ErrorBoundary>
         </div>
         </div>

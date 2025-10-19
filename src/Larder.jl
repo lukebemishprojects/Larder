@@ -36,17 +36,17 @@ end
 
 fileheaders(f) = Dict("Content-Type" => get(mimetypes, splitext(f)[2], "application/octet-stream"))
 
-fileresponse(method, f) = method == "GET" ? Dict(
+fileresponse(method, f) = method != "HEAD" ? Dict{Symbol, Any}(
     :body => read(f),
     :headers => fileheaders(f)
-) : Dict(
+) : Dict{Symbol, Any}(
     :headers => fileheaders(f)
 )
 
-jsonresponse(method, obj) = method == "GET" ? Dict(
+jsonresponse(method, obj) = method != "HEAD" ? Dict{Symbol, Any}(
     :body => JSON.json(obj),
     :headers => Dict("Content-Type" => "application/json")
-) : Dict(
+) : Dict{Symbol, Any}(
     :headers => Dict("Content-Type" => "application/json")
 )
 
@@ -97,11 +97,11 @@ function app(apicontext)
             jsonresponse(req[:method], val)
         catch e
             if e isa api.InvalidRequestError
-                mux(status(400), jsonresponse(req[:method], Dict("error" => e.msg)))(req)
+                mux(Mux.status(400), req -> jsonresponse("GET", Dict("error" => e.msg)))(req)
             elseif e isa api.NotAuthorizedError
-                mux(status(401), respond("Unauthorized"))(req)
+                mux(Mux.status(401), respond("Unauthorized"))(req)
             elseif e isa api.NotFoundError
-                mux(status(404), jsonresponse(req[:method], Dict("error" => e.msg)))(req)
+                mux(Mux.status(404), req -> jsonresponse("GET", Dict("error" => e.msg)))(req)
             else
                 rethrow(e)
             end
@@ -114,6 +114,8 @@ function app(apicontext)
         appenv == "dev" ? dummyjwt("dashboard/"; context=apicontext) : jwt("dashboard/"; aud = dashboardaud, location = jwtcertificatelocation, header = jwtheader, permissions = Set([api.allowdashboard]), context=apicontext),
         formethods(["GET", "HEAD"], Mux.stack(
             apipage("dashboard/admin/api/listusers", api.listusers),
+            apipage("dashboard/admin/api/repositories", api.listrepositories),
+            apipage("dashboard/admin/api/repositories/:repositoryname", api.getrepository),
 
             apipage("dashboard/api/whoami", api.whoami),
             apipage("dashboard/api/namespaces/:user/list", api.listnamespaces),
@@ -127,8 +129,12 @@ function app(apicontext)
             apipage("dashboard/admin/api/namespaces/:user/create/:namespace", api.addnamespace),
             apipage("dashboard/admin/api/namespaces/:user/confirm/:namespace", api.confirmnamespace),
             apipage("dashboard/admin/api/namespaces/:user/delete/:namespace", api.removenamespace),
+            apipage("dashboard/admin/api/repositories/:repositoryname", api.updaterepository),
 
             apipage("dashboard/api/namespaces/:user/request/:namespace", api.requestnamespace),
+        )),
+        formethod("DELETE", Mux.stack(
+            apipage("dashboard/admin/api/repositories/:repositoryname", api.removerepository),
         )),
         route("dashboard/api", Mux.notfound()),
         formethods(["GET", "HEAD"], files("dashboard/", "dashboard/dist/")),

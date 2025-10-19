@@ -1,8 +1,8 @@
-import { Accessor, createSignal, For, Setter, Show, type JSX, } from 'solid-js';
+import { Accessor, createSignal, For, Show, type JSX, } from 'solid-js';
 
 export function OuterBox(props: { children: JSX.Element }) {
     return (
-        <div class="bg-slate-300 shadow-sm rounded-lg p-0 block flex flex-col">
+        <div class="bg-slate-300 shadow-sm rounded-md p-0 block flex flex-col">
             {props.children}
         </div>
     )
@@ -24,11 +24,17 @@ export function InnerElement(props: { children: JSX.Element }) {
     )
 }
 
+export function BoxInside(props: { children: JSX.Element }) {
+    return (<div class="py-2.5 block flex flex-col gap-2">
+        {props.children}
+    </div>)
+}
+
 export function BoxWithHeader(props: { children: [JSX.Element, JSX.Element] }) {
     const [boxOpen, setBoxOpen] = createSignal(false);
     return (
         <OuterBox>
-            <button class="bg-white shadow-sm rounded-lg p-2.5 block cursor-pointer" onclick={() => setBoxOpen(!boxOpen())}>
+            <button class="bg-white shadow-sm rounded-md p-2.5 block cursor-pointer" onclick={() => setBoxOpen(!boxOpen())}>
                 {props.children[0]}
             </button>
             <Show when={boxOpen()}>
@@ -40,17 +46,26 @@ export function BoxWithHeader(props: { children: [JSX.Element, JSX.Element] }) {
     )
 }
 
-export function TextInputGroup(props: { type: string, placeholder: string, accessor: Accessor<string>, setter: Setter<string> } & ({ units: JSX.Element } | { submit: JSX.Element, onsubmit: () => Promise<void> })) {
+export function TextInputGroup(props: { type: string, placeholder: string, accessor?: Accessor<string>, setter?: (value: string) => void, input?: JSX.InputHTMLAttributes<HTMLInputElement> } & ({ units: JSX.Element } | { submit: JSX.Element, onsubmit: (target: HTMLInputElement) => Promise<void> | void, allowenter?: boolean })) {
+    let reference!: HTMLInputElement;
     return (
-        <div class="flex flex-row block">
-            <input type={props.type} class="bg-white border-1 rounded-lg p-2.5 text-sm bg-slate-150 focus:inset-ring-blue-500 focus:border-1 focus:ring-0 focus:outline-none focus:shadow-none focus:inset-ring-2 flex-1 rounded-r-none" placeholder={props.placeholder} value={props.accessor()} onkeydown={async (e) => {
-                if ('submit' in props && e.key == 'Enter') {
-                    await props.onsubmit();
+        <div class="flex flex-row block w-full">
+            <input ref={reference} type={props.type} class="bg-white border-1 rounded-md p-2.5 text-sm bg-slate-150 focus:inset-ring-blue-500 focus:border-1 focus:ring-0 focus:outline-none focus:shadow-none focus:inset-ring-2 flex-1 rounded-r-none" placeholder={props.placeholder} value={props.accessor?.() ?? ""} onkeydown={async (e) => {
+                if ('submit' in props && (props.allowenter ?? true) && e.key == 'Enter') {
+                    await props.onsubmit(e.currentTarget);
                 }
             }} oninput={(e) => {
-                props.setter(e.target.value)
-            }}/>
-            {'units' in props ? <div class="bg-slate-150 rounded-lg border-1 border-l-0 p-2.5 block text-sm rounded-l-none">{props.units}</div> : <button class="font-semibold bg-white rounded-lg border-1 border-l-0 p-2.5 block text-sm rounded-l-none cursor-pointer bg-slate-150 hover:bg-slate-200" onclick={props.onsubmit}>{props.submit}</button>}
+                props.setter?.(e.target.value)
+            }} {...props.input}/>
+            {'units' in props ? <div class="bg-slate-150 rounded-md border-1 border-l-0 p-2.5 block text-sm rounded-l-none">{props.units}</div> :
+                <button class="font-semibold bg-white rounded-md border-1 border-l-0 p-2.5 block text-sm rounded-l-none cursor-pointer bg-slate-150 hover:bg-slate-200" onclick={async () => await props.onsubmit(reference)}>{props.submit}</button>}
         </div>
     )
+}
+
+export function Button(props: { children: JSX.Element, disabled?: boolean, onclick?: () => Promise<void> | void }) {
+    return (<button class="font-semibold bg-white rounded-md text-sm border-1 py-2.5 px-3 block cursor-pointer bg-slate-150 hover:bg-slate-200 disabled:text-slate-400 disabled:bg-slate-150 disabled:cursor-auto"
+        disabled={props.disabled} onclick={props.onclick}>
+        {props.children}
+    </button>)
 }

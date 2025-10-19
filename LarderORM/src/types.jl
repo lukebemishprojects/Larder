@@ -32,8 +32,8 @@ decode(x::Tuple, ::Type{Identifier{T}}) where T <: Model = begin
     identifiertype = Tuple{(fieldtype(T, property) for property ∈ uniqueidentifier(T))...}
     ConcreteIdentifier{T}(decode(x, identifiertype))
 end
-decode(::Tuple{Vararg{Missing}}, ::Type{<:Missing}) = missing
-decode(::Tuple{Vararg{Missing}}, ::Type{<:Nothing}) = nothing
+decode(::Tuple{Vararg{Missing}}, ::Type{Union{T, Missing}}) where T = missing
+decode(::Tuple{Vararg{Missing}}, ::Type{Union{T, Nothing}}) where T = nothing
 decode(x::Tuple{String}, ::Type{Union{T, Missing}}) where T = decode(x, T)
 decode(x::Tuple{String}, ::Type{Union{T, Nothing}}) where T = decode(x, T)
 decode(x::Tuple, ::Type{T}) where T <: Tuple = begin
