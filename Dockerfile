@@ -1,4 +1,4 @@
-FROM julia:1.12.0-trixie
+FROM julia:1.12.1-trixie
 
 ENV APP_ENV="prod"
 
