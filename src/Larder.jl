@@ -108,6 +108,22 @@ function app(apicontext)
         end)
     end
 
+    function showindex()
+        return (rest, req) -> begin
+            parts = req[:path]
+            if length(parts) == 0
+                return api.showrepositories(req; context=apicontext)
+            end
+            if !endswith(req[:uri].path, '/')
+                # TODO: do we need this? We could also just ask for the S3/whatever _first_ and then this would just work out of the box.
+                return rest(req)
+            end
+            path = join(parts[2:end], "/")
+            repositoryname = parts[1]
+            return api.showindex(req, rest, repositoryname, path; context=apicontext)
+        end
+    end
+
     @app app = (
         appenv == "dev" ? Mux.defaults : Mux.prod_defaults,
         appenv == "dev" ? dummyjwt("dashboard/admin/"; context=apicontext) : jwt("dashboard/admin/"; aud = admindashboardaud, location = jwtcertificatelocation, header = jwtheader, permissions = Set([api.allowadmindashboard, api.allowdashboard]), context=apicontext),
@@ -124,6 +140,12 @@ function app(apicontext)
                 :status => 302,
                 :headers => [("Location", signout)]
             ))),
+
+            route("dashboard/api", Mux.notfound()),
+            route("dashboard/admin/api", Mux.notfound()),
+            files("dashboard/", "dashboard/dist/"),
+            files("_internal/", "indices/dist/_internal/"),
+            showindex()
         )),
         formethod("POST", Mux.stack(
             apipage("dashboard/admin/api/namespaces/:user/create/:namespace", api.addnamespace),
@@ -134,10 +156,8 @@ function app(apicontext)
             apipage("dashboard/api/namespaces/:user/request/:namespace", api.requestnamespace),
         )),
         formethod("DELETE", Mux.stack(
-            apipage("dashboard/admin/api/repositories/:repositoryname", api.removerepository),
+            apipage("dashboard/admin/api/repositories/:repositoryname", api.removerepository)
         )),
-        route("dashboard/api", Mux.notfound()),
-        formethods(["GET", "HEAD"], files("dashboard/", "dashboard/dist/")),
         Mux.notfound()
     )
     return app

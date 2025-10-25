@@ -90,7 +90,7 @@ export function newRepository(): Repository {
     };
 }
 
-const reservedpaths = new Set(['api', 'dashboard', 'publish']);
+const reservedpaths = new Set(['api', 'dashboard', 'publish', '_internal']);
 
 export function isRepositoryNameValid(repositoryname: string): boolean {
     return /^[a-z0-9._-]+$/.test(repositoryname) && !reservedpaths.has(repositoryname);

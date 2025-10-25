@@ -1,8 +1,10 @@
 module api
 
 using JSON
-using UUIDs
+using Printf
 import LibPQ
+using UUIDs
+using Dates
 using LarderORM
 using StructTypes
 using StructUtils
@@ -43,8 +45,21 @@ end
 LarderORM.tablename(::Type{Repository}) = "repositories"
 StructTypes.idproperty(::Type{Repository}) = :name
 
+struct RepositoryIndex <: Model
+    repository::Identifier{Repository}
+    path::String
+    name::String
+    isdirectory::Bool
+    lastmodified::Union{DateTime, Nothing}
+    size::Union{Int64, Nothing}
+    expires::Int64
+end
+
+LarderORM.tablename(::Type{RepositoryIndex}) = "repositoryindices"
+LarderORM.uniqueidentifier(::Type{RepositoryIndex}) = (:repository, :path, :name)
+
 function printschemas()
-    for T in (User, UserNamespace, Repository)
+    for T in (User, UserNamespace, Repository, RepositoryIndex)
         println(schema(T))
     end
 end
@@ -186,7 +201,7 @@ confirmnamespace(req; context) = begin
     return Dict()
 end
 
-const reservedpaths = Set(["api", "dashboard", "publish"])
+const reservedpaths = Set(["api", "dashboard", "publish", "_internal"])
 
 isvalidrepositoryname(name::AbstractString) = begin
     !isnothing(match(r"^[a-z0-9._-]+$", name)) && !(name in reservedpaths)
@@ -285,14 +300,121 @@ const migrations = Migrations(
             PRIMARY KEY (name)
         );
 
+        CREATE TABLE IF NOT EXISTS repositoryindices (
+            repository varchar NOT NULL,
+            path varchar NOT NULL,
+            name varchar NOT NULL,
+            isdirectory boolean NOT NULL,
+            lastmodified timestamp,
+            size bigint,
+            expires bigint NOT NULL,
+            FOREIGN KEY (repository) REFERENCES repositories (name),
+            PRIMARY KEY (repository, path, name)
+        );
+
+
         """),
         db -> execute(db, """
         DROP TABLE IF EXISTS users;
         DROP TABLE IF EXISTS usernamespaces;
         DROP TABLE IF EXISTS repositories;
+        DROP TABLE IF EXISTS repositoryindices;
         """)
     )
 )
+
+macro templatefile_str(filename)
+    contents = open(filename) do f
+        read(f, String)
+    end
+    expr = Meta.parse("\"\"\"$contents\"\"\"")
+    return esc(expr)
+end
+
+struct IndexEntry
+    name::String
+    datetime::String
+    size::String
+end
+
+function fillindex(path::String, entries::Vector{IndexEntry})
+    templatefile"indices/dist/index-page.html"
+end
+
+humansize(bytes) = begin
+    threshold = 1000
+
+    if abs(bytes) < threshold
+        return string(bytes)
+    end
+
+    ofunit = Float64(bytes)
+	units = ['K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y']
+	u = 0
+	r = 10
+
+    while true
+        ofunit /= threshold
+        u++
+        if round(ofunit, digits=1) < threshold || u == length(units)
+            break
+        end
+    end
+
+    "$(round(ofunit, digits=1))$(units[u])"
+end
+
+indexresponse(method, html) = method != "HEAD" ? Dict{Symbol, Any}(
+    :body => html,
+    :headers => Dict("Content-Type" => "text/html")
+) : Dict{Symbol, Any}(
+    :headers => Dict("Content-Type" => "text/html")
+)
+
+showrepositories(req; context) = begin
+    repos = selectmodels(context.db, Repository)
+    return indexresponse(req[:method], fillindex("/", [IndexEntry(
+        "$(repo.name)/",
+        "",
+        ""
+    ) for repo in sort(repos, by = x -> x.name)]))
+end
+
+showindex(req, rest, repositoryname, path; context) = begin
+    parent = Identifier{RepositoryIndex}(
+        Identifier{Repository}(repositoryname),
+        path,
+        "../"
+    )
+    index = selectmodel(context.db, parent)
+    if isnothing(index)
+        # TODO: index page if not present and fall back to rest if necessary
+        return rest(req)
+    end
+    matching = selectmodels(context.db, RepositoryIndex, [
+        :repository => Identifier{Repository}(repositoryname),
+        :path => path
+    ])
+    entries = [IndexEntry(
+        "../",
+        "",
+        ""
+    )]
+    matching = sort(matching, by = x -> (x.isdirectory ? 0 : 1, x.name))
+    for entry in matching
+        if (entry.name == "../")
+            continue
+        end
+        datetime = entry.isdirectory ? "" : Dates.format(entry.lastmodified, dateformat"yyyy-mm-ddTHH:MM:SS.s")
+        size = entry.isdirectory ? "" : humansize(entry.size)
+        push!(entries, IndexEntry(
+            entry.name,
+            datetime,
+            size
+        ))
+    end
+    return indexresponse(req[:method], fillindex("/"+path, entries))
+end
 
 function context()
     c = Context(Database(LibPQ.Connection(

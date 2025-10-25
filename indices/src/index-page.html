@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Index of $(path)</title>
+  <link href="/_internal/index-page.css" rel="stylesheet">
+</head>
+<body>
+  <div class="bg-slate-200 text-slate-900 w-dvw h-dvh">
+    <div class="w-full h-full flex flex-col gap-5 p-5">
+      <div class="w-full flex flex-row gap-5 items-center">
+        <h1 class="text-5xl">$(path)</h1>
+        <div class="flex-1"></div>
+        <a href="/dashboard/" class="justify-center py-2 px-3 rounded-md bg-white font-semibold border-1 hover:bg-slate-150">
+          Dashboard
+        </a>
+      </div>
+      <div class="w-full h-0 border-b-2"></div>
+      <div class="w-full h-full flex flex-col gap-2.5 overflow-auto">
+$(join("""
+      <a href="$(entry.name)" class="bg-white shadow-sm bg-slate-150 rounded-lg p-2.5 block">
+      <div class="flex flex-row gap-5 items-center">
+        <div class="">$(entry.name)</div>
+        <div class="flex-1"></div>
+        <div class="w-1/3">
+          <div class="flex flex-row gap-5 items-center">
+            <div class="font-mono text-xs text-slate-600">$(entry.datetime)</div>
+            <div class="flex-1"></div>
+            <div class="font-mono text-xs text-slate-600">$(entry.size)</div>
+          </div>
+        </div>
+      </div>
+      </a>
+""" for entry in entries))
+      </div>
+    </div>
+  </div>
+</body>
+</html>

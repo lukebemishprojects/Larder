@@ -21,6 +21,7 @@ COPY --chown=app:app src /home/app/${APP}/
 COPY --chown=app:app LarderORM /home/app/${APP}/
 COPY --chown=app:app *.toml precompile.jl /home/app/${APP}/
 COPY --chown=app:app dashboard/dist /home/app/${APP}/dashboard/
+COPY --chown=app:app indices/dist /home/app/${APP}/indices/
 RUN julia --project -e 'using Pkg; Pkg.precompile();'
 
 RUN julia --project precompile.jl

@@ -1,8 +1,8 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.0"
+julia_version = "1.12.1"
 manifest_format = "2.0"
-project_hash = "ccf3ce40337ef21f7d38d0f81681de068af5daf5"
+project_hash = "1974461db6aa92ab4dad849de00520e8456ea3e4"
 
 [[deps.AWS]]
 deps = ["Base64", "Compat", "Dates", "Downloads", "GitHub", "HTTP", "IniFile", "JSON", "MbedTLS", "Mocking", "OrderedCollections", "Random", "SHA", "ScopedValues", "Sockets", "URIs", "UUIDs", "XMLDict"]
@@ -248,7 +248,7 @@ uuid = "b39eb1a6-c29a-53d7-8c32-632cd16f18da"
 version = "1.21.3+0"
 
 [[deps.Larder]]
-deps = ["AWSS3", "Dates", "HTTP", "JSON", "JWTs", "LarderORM", "LibPQ", "Mux", "StructTypes", "UUIDs"]
+deps = ["AWSS3", "Dates", "HTTP", "JSON", "JWTs", "LarderORM", "LibPQ", "Mux", "Printf", "StructTypes", "StructUtils", "UUIDs"]
 path = "."
 uuid = "24605107-cf83-494d-a066-bcc4fc64ba48"
 version = "0.1.0"

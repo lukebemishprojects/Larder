@@ -1,0 +1,13 @@
+{
+  "scripts": {
+    "dist": "mkdir -p dist && rm -rf dist/* && cp src/* dist/ -r",
+    "css:postcss": "postcss -r dist/_internal/index-page.css",
+    "css:hash-replace": "sed -i \"s/index-page.css/index-page-$(sha1sum dist/_internal/index-page.css | awk '{print substr($1,0,7)}').css/\" dist/index-page.html",
+    "css:hash-rename": "mv dist/_internal/index-page.css dist/_internal/index-page-$(sha1sum dist/_internal/index-page.css | awk '{print substr($1,0,7)}').css",
+    "build": "npm run dist && npm run css:postcss && npm run css:hash-replace && npm run css:hash-rename"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.15",
+    "postcss-cli": "^11.0.1"
+  }
+}

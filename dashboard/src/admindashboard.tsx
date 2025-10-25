@@ -277,8 +277,6 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
                         }} />
                     </Show>
                 </div>
-            </InnerElement>
-            <InnerElement>
                 <OrError get={status} />
             </InnerElement>
         </>
@@ -330,8 +328,8 @@ function RepositoriesList() {
             }} />
             <BoxInside>
                 <InnerElement>
-                    <OrError get={status} />
                     <RepositorySettings value={toCreate} set={setToCreate} />
+                    <OrError get={status} />
                 </InnerElement>
             </BoxInside>
         </OuterBox>
