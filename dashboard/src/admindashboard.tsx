@@ -6,8 +6,8 @@ import { App, AppExternalEntry, AppInternalEntry } from './App';
 
 import './app.css';
 import * as api from './api';
-import { createEffect, createResource, createSignal, ErrorBoundary, For, Setter, Show, useContext } from 'solid-js';
-import { BoxInside, BoxWithHeader, Button, InnerElement, InnerHoverElements, OuterBox, TextInputGroup } from './boxes';
+import { createEffect, createResource, createSignal, ErrorBoundary, For, Setter, Show, Signal, useContext } from 'solid-js';
+import { BoxInside, BoxWithHeader, Button, InnerElement, InnerHoverElements, OuterBox, TextInput, TextInputGroup } from './boxes';
 import { Dropdown } from './Dropdown';
 import { orErrorSignal, OrError } from './utils';
 import { createStore, SetStoreFunction, unwrap } from 'solid-js/store';
@@ -224,7 +224,7 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
                 <RepositorySettings value={toSet} set={setToSet} />
             </InnerElement>
             <InnerElement>
-                <div class="flex flex-row gap-2.5 w-full">
+                <div class="flex flex-row gap-2.5 w-full items-center">
                     <Button disabled={!isDirty()} onclick={async () => {
                         setStatus({ status: "ok" });
                         const current = { ...unwrap(toSet) }
@@ -298,7 +298,7 @@ function RepositoriesList() {
         </OuterBox>)
     }}>
         <OuterBox>
-            <TextInputGroup type="text" accessor={() => toCreate.name} setter={(value: string) => {
+            <div class="shadow-sm"><TextInputGroup type="text" accessor={() => toCreate.name} setter={(value: string) => {
                 setToCreate("name", value);
             }} placeholder="Create repository" submit="Create" onsubmit={async () => {
                 const current = { ...unwrap(toCreate) }
@@ -325,7 +325,7 @@ function RepositoriesList() {
                     setStatus({ status: "error", err: `Error: ${err}` });
                 }
                 await refetch();
-            }} />
+            }} /></div>
             <BoxInside>
                 <InnerElement>
                     <RepositorySettings value={toCreate} set={setToCreate} />
@@ -341,9 +341,217 @@ function RepositoriesList() {
     </ErrorBoundary>)
 }
 
+function S3BackendSettings(props: { set: SetStoreFunction<api.S3Backend>, value: api.S3Backend }) {
+    return (
+        <div class="block flex flex-col gap-2">
+            <TextInput type="text" placeholder="Region" value={props.value.region} onchange={(v) => {props.set("region", v)}} />
+            <TextInput type="text" placeholder="Access Key ID" value={props.value.accesskeyid} onchange={(v) => {props.set("accesskeyid", v)}} />
+            <TextInput type="text" placeholder="Endpoint" value={props.value.endpoint} onchange={(v) => {props.set("endpoint", v)}} />
+            <TextInput type="text" placeholder="Secret Access Key" value={props.value.secretaccesskey ?? ""} onchange={(v) => {
+                if (v.length > 0) {
+                    props.set("secretaccesskey", v);
+                } else {
+                    props.set("secretaccesskey", undefined);
+                }
+            }} />
+        </div>
+    );
+}
+
+function BackendSettings(props: { set: SetStoreFunction<api.BackendConfiguration>, value: api.BackendConfiguration }) {
+    const [ s3Config, setS3Config ] = createStore(props.value.s3config ?? api.newS3Backend());
+
+    return (
+        <div class="block flex flex-col gap-2">
+            <Show when={props.value.type == "s3backend"}>
+                <S3BackendSettings value={s3Config} set={setS3Config} />
+            </Show>
+        </div>
+    )
+}
+
+function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: SetStoreFunction<api.BackendConfiguration>, mutate: Setter<api.Backends | undefined>, refetch: () => Promise<unknown> | unknown, orError: Signal<OrError> }) {
+    return <BackendSettings value={props.toSet} set={props.setToSet} />;
+}
+
+function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backends | undefined>, refetch: () => Promise<unknown> | unknown }) {
+    const [ backendConfiguration, { refetch } ] = createResource(async () => {
+        return await api.fetchJSON(`/dashboard/admin/api/backends/${props.backend.id}`, api.BackendConfiguration);
+    });
+    const [ status, setStatus ] = orErrorSignal();
+    const [ isDeleting, setIsDeleting ] = createSignal(false);
+    return <ErrorBoundary fallback={(error) => {
+        console.log(error);
+        return (<OuterBox>
+            <div class="text-red-600 p-5">
+                Error: {error.message}
+            </div>
+        </OuterBox>)
+    }}>
+        <Show when={backendConfiguration()}>
+            {(item) => {
+                const [ toSet, setToSet ] = createStore<api.BackendConfiguration>({ ...item() });
+                const isDirty = () => {
+                    if (item().type != toSet.type) {
+                        return true;
+                    }
+                    const type = toSet.type;
+                    if (item().type != type) {
+                        return true;
+                    }
+                    if (type == "s3backend") {
+                        let key: keyof api.S3Backend;
+                        for (key in item().s3config) {
+                            if (toSet.s3config![key] != item().s3config![key]) {
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                }
+                return <BoxWithHeader>
+                    <div class="flex flex-row gap-2.5 w-full items-center">
+                        <div>{api.calculateBackendName(item())}</div>
+                        <div class="flex-1"></div>
+                        <div class="font-mono text-xs text-slate-600">{props.backend.id}</div>
+                    </div>
+                    <>
+                        <InnerElement>
+                            <BackendContents toSet={toSet} setToSet={setToSet} mutate={props.mutate} refetch={props.refetch} orError={[status, setStatus]} />
+                        </InnerElement>
+                        <InnerElement>
+                            <div class="flex flex-row gap-2.5 w-full items-center">
+                                <Button disabled={!isDirty()} onclick={async () => {
+                                    setStatus({ status: "ok" });
+                                    const current = { ...unwrap(toSet) }
+                                    try {
+                                        await api.postJSON(`/dashboard/admin/api/backends/${props.backend.id}`, current);
+                                    } catch (err: any) {
+                                        console.error(err);
+                                        setStatus({ status: "error", err: `Error: ${err}` });
+                                        return;
+                                    }
+                                    await refetch();
+                                }}>
+                                    Save
+                                </Button>
+                                <Button onclick={() => {
+                                    if (isDeleting()) {
+                                        setIsDeleting(false);
+                                    }
+                                    if (isDirty()) {
+                                        setToSet({ ...item() });
+                                    }
+                                }} disabled={!isDirty() && !isDeleting()}>
+                                    Cancel
+                                </Button>
+                                <Show when={!isDeleting()}>
+                                    <Button onclick={() => {
+                                        setIsDeleting(true);
+                                    }}>
+                                        Delete
+                                    </Button>
+                                </Show>
+                                <Show when={isDeleting()}>
+                                    <Button onclick={async () => {
+                                        setStatus({ status: "ok" });
+                                        props.mutate((backends) => {
+                                            return backends === undefined ? undefined : {
+                                                values: backends.values.filter((r) => r.id != props.backend.id)
+                                            };
+                                        });
+                                        try {
+                                            await api.deleteURL(`/dashboard/admin/api/backends/${props.backend.id}`);
+                                        } catch (err: any) {
+                                            console.error(err);
+                                            setStatus({ status: "error", err: `Error: ${err}` });
+                                            return;
+                                        }
+                                        await props.refetch();
+                                    }}>
+                                        Confirm
+                                    </Button>
+                                    <div class="text-red-500">
+                                        Deletion is permanent and cannot be undone. Please confirm.
+                                    </div>
+                                </Show>
+                            </div>
+                            <OrError get={status} />
+                        </InnerElement>
+                    </>
+                </BoxWithHeader>
+            }}
+        </Show>
+    </ErrorBoundary>;
+}
+
+function BackendsList() {
+    const [ backends, { mutate, refetch }] = createResource(async () => {
+        return await api.fetchJSON('/dashboard/admin/api/backends', api.Backends);
+    })
+    const [ toCreate, setToCreate ] = createStore(api.newBackendConfiguration());
+    const [ status, setStatus ] = orErrorSignal();
+
+    const possibleTypes: api.BackendConfiguration["type"][] = api.BackendConfiguration.shape.type.options;
+
+    return (<ErrorBoundary fallback={(error) => {
+        console.log(error);
+        return (<OuterBox>
+            <div class="text-red-600 p-5">
+                Error: {error.message}
+            </div>
+        </OuterBox>)
+    }}>
+        <OuterBox>
+            <div class="bg-white shadow-sm rounded-md flex flex-row w-full">
+                <div class="bg-white text-sm py-2.5 px-3 flex-1">Create backend</div>
+                <Dropdown classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150 rounded-r-none" entries={possibleTypes.map((type) => {
+                    return {
+                        value: api.backendTypePrettyName(type),
+                        action: async () => setToCreate("type", type)
+                    }
+                })}>
+                    {api.backendTypePrettyName(toCreate.type)}
+                    <svg class="-mr-1 size-5 text-slate-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" data-slot="icon">
+                        <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+                    </svg>
+                </Dropdown>
+                <button class="border-l-0 font-semibold bg-white rounded-md text-sm border-1 py-2.5 px-3 block cursor-pointer bg-slate-150 hover:bg-slate-200 rounded-l-none" onclick={async () => {
+                    const current = { ...unwrap(toCreate) }
+                    setToCreate(api.newBackendConfiguration());
+                    setStatus({ status: "ok" });
+                    try {
+                        await api.postJSON(`/dashboard/admin/api/backends`, current);
+                    } catch (err: any) {
+                        console.error(err);
+                        setStatus({ status: "error", err: `Error: ${err}` });
+                        return;
+                    }
+
+                    await refetch();
+                }}>
+                    Create
+                </button>
+            </div>
+            <BoxInside>
+                <InnerElement>
+                    <BackendSettings value={toCreate} set={setToCreate} />
+                    <OrError get={status} />
+                </InnerElement>
+            </BoxInside>
+        </OuterBox>
+        <Show when={backends()}>
+            <For each={backends()!.values}>
+                {(backend) => <SingleBackend mutate={mutate} refetch={refetch} backend={backend} />}
+            </For>
+        </Show>
+    </ErrorBoundary>)
+}
+
 render(() => <App entries={[
     new AppInternalEntry("Users", () => "Users", AdminUsers),
     new AppInternalEntry("Repositories", () => "Repositories", RepositoriesList),
+    new AppInternalEntry("Backends", () => "Backends", BackendsList),
     new AppExternalEntry("Browse", async () => { window.location.href = '/' }),
     new AppExternalEntry("Dashboard", async () => { window.location.href = '/dashboard/' }),
     new AppExternalEntry("Sign Out", async () => { window.location.href = '/dashboard/logout/' })

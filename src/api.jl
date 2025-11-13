@@ -1,67 +1,27 @@
 module api
 
-using JSON
+include("api-schema.jl")
+
 using Printf
 import LibPQ
-using UUIDs
-using Dates
-using LarderORM
-using StructTypes
 using StructUtils
+using AWS
 
 @enum Permission allowdashboard allowadmindashboard
 
+@kwdef struct CustomAWSConfig <: AbstractAWSConfig
+    region::String
+    endpoint::String
+    credentials::AWSCredentials
+end
+
 struct Context
     db::LarderORM.Database
+    aws::CustomAWSConfig
 end
 
-Base.close(c::Context) = close(c.db)
-
-struct User <: Model
-    email::String
-    id::UUID
-end
-
-LarderORM.tablename(::Type{User}) = "users"
-StructTypes.idproperty(::Type{User}) = :id
-
-struct UserNamespace <: Model
-    id::Identifier{User}
-    namespace::String
-    confirmed::Bool
-end
-
-LarderORM.tablename(::Type{UserNamespace}) = "usernamespaces"
-LarderORM.uniqueidentifier(::Type{UserNamespace}) = (:id, :namespace)
-
-struct Repository <: Model
-    name::String
-    supportsmavendeploy::Bool
-    supportspublishportal::Bool
-    expirationdays::Int32
-    mutable::Bool
-end
-
-LarderORM.tablename(::Type{Repository}) = "repositories"
-StructTypes.idproperty(::Type{Repository}) = :name
-
-struct RepositoryIndex <: Model
-    repository::Identifier{Repository}
-    path::String
-    name::String
-    isdirectory::Bool
-    lastmodified::Union{DateTime, Nothing}
-    size::Union{Int64, Nothing}
-    expires::Int64
-end
-
-LarderORM.tablename(::Type{RepositoryIndex}) = "repositoryindices"
-LarderORM.uniqueidentifier(::Type{RepositoryIndex}) = (:repository, :path, :name)
-
-function printschemas()
-    for T in (User, UserNamespace, Repository, RepositoryIndex)
-        println(schema(T))
-    end
+Base.close(c::Context) = begin
+    close(c.db)
 end
 
 function newuser(user, context)
@@ -74,12 +34,6 @@ function newuser(user, context)
         end
     end
     user
-end
-
-JSON.lower(uuid::UUID) = string(uuid)
-JSON.lower(id::Identifier{T}) where T <: Model = begin
-    properties = LarderORM.uniqueidentifier(T)
-    Dict((property => id.values[i] for (i, property) ∈ enumerate(properties))...)
 end
 
 whoami(req; context) = req[:jwt_identity].user
@@ -248,7 +202,11 @@ removerepository(req; context) = begin
     if !isvalidrepositoryname(repositoryname)
         throw(InvalidRequestError("Invalid repository name: $repositoryname"))
     end
-    deletemodel!(context.db, Identifier{Repository}(repositoryname))
+    transact(context.db) do db
+        id = Identifier{Repository}(repositoryname)
+        deletemodels!(db, RepositoryIndex, [:repository => id])
+        deletemodel!(db, id)
+    end
     return Dict()
 end
 
@@ -274,54 +232,188 @@ listrepositories(req; context) = begin
     ListResponse(selectmodels(context.db, Repository))
 end
 
-const migrations = Migrations(
-    1 => Migration(
-        db -> execute(db, """
-        CREATE TABLE IF NOT EXISTS users (
-            email varchar NOT NULL,
-            id uuid NOT NULL,
-            PRIMARY KEY (id)
-        );
+listbackends(req; context) = begin
+    if !(allowadmindashboard in req[:jwt_identity].permissions)
+        throw(NotAuthorizedError())
+    end
+    backends = selectmodels(context.db, RepositoryBackend)
+    return ListResponse(backends)
+end
 
-        CREATE TABLE IF NOT EXISTS usernamespaces (
-            id uuid NOT NULL,
-            namespace varchar NOT NULL,
-            confirmed boolean NOT NULL,
-            FOREIGN KEY (id) REFERENCES users (id),
-            PRIMARY KEY (id, namespace)
-        );
+@kwdef struct S3BackendData
+    region::String
+    endpoint::String
+    accesskeyid::String
+    secretaccesskeyhash::Union{String, Nothing} = nothing
+end
 
-        CREATE TABLE IF NOT EXISTS repositories (
-            name varchar NOT NULL,
-            supportsmavendeploy boolean NOT NULL,
-            supportspublishportal boolean NOT NULL,
-            expirationdays integer NOT NULL,
-            mutable boolean NOT NULL,
-            PRIMARY KEY (name)
-        );
+@kwdef struct RepositoryBackendWithData
+    id::Union{UUID,Nothing}
+    type::RepositoryBackendType
+    s3backend::Union{S3BackendData,Nothing}
+end
 
-        CREATE TABLE IF NOT EXISTS repositoryindices (
-            repository varchar NOT NULL,
-            path varchar NOT NULL,
-            name varchar NOT NULL,
-            isdirectory boolean NOT NULL,
-            lastmodified timestamp,
-            size bigint,
-            expires bigint NOT NULL,
-            FOREIGN KEY (repository) REFERENCES repositories (name),
-            PRIMARY KEY (repository, path, name)
-        );
+getbackend(req; context) = begin
+    idstr = req[:params][:id]
+    id = tryparse(UUID, idstr)
+    if isnothing(id)
+        throw(InvalidRequestError("Invalid UUID: $idstr"))
+    end
+    if !(allowadmindashboard in req[:jwt_identity].permissions)
+        throw(NotAuthorizedError())
+    end
+    data = nothing
+    transact(context.db) do db
+        backend = selectmodel(db, Identifier{RepositoryBackend}(id))
+        if isnothing(backend)
+            throw(NotFoundError("Backend not found"))
+        end
+        data = RepositoryBackendWithData(;
+            id = backend.id,
+            type = backend.type,
+            configuration = begin
+                if backend.type == s3backend
+                    specific = selectmodel(db, Identifier{S3Backend}(id))
+                    S3BackendData(;
+                        region = specific.region,
+                        endpoint = specific.endpoint,
+                        accesskeyid = specific.accesskeyid
+                    )
+                else
+                    throw(InvalidRequestError("Unknown backend type: $(backend.type)"))
+                end
+            end
+        )
+    end
+    return data
+end
 
+removebackend(req; context) = begin
+    idstr = req[:params][:id]
+    id = tryparse(UUID, idstr)
+    if isnothing(id)
+        throw(InvalidRequestError("Invalid UUID: $idstr"))
+    end
+    if !(allowadmindashboard in req[:jwt_identity].permissions)
+        throw(NotAuthorizedError())
+    end
+    transact(context.db) do db
+        inuse = selectmodels(db, RepositoryBackendConfiguration, [:backend => Identifier{RepositoryBackend}(id)])
+        if length(inuse) > 0
+            throw(InvalidRequestError("Cannot delete backend still in use by repositories"))
+        end
+        deletemodel!(db, Identifier{RepositoryBackend}(id))
+        deletemodel!(db, Identifier{S3Backend}(id))
+    end
+    return Dict()
+end
 
-        """),
-        db -> execute(db, """
-        DROP TABLE IF EXISTS users;
-        DROP TABLE IF EXISTS usernamespaces;
-        DROP TABLE IF EXISTS repositories;
-        DROP TABLE IF EXISTS repositoryindices;
-        """)
+createbackend(req; context) = begin
+    if !(allowadmindashboard in req[:jwt_identity].permissions)
+        throw(NotAuthorizedError())
+    end
+    json = nothing
+    try
+        json = JSON.parse(getbody(req))
+    catch _
+        throw(InvalidRequestError("Invalid JSON body"))
+    end
+    data = StructUtils.make(RepositoryBackendWithData, json)
+    if !isnothing(data.id)
+        throw(InvalidRequestError("Cannot specify ID when creating backend"))
+    end
+    data.id = uuid4()
+    transact(context.db) do db
+        backend = RepositoryBackend(id, data.type)
+        insertmodel!(db, backend)
+        if data.type == s3backend
+            if isnothing(data.s3backend)
+                throw(InvalidRequestError("Missing S3 backend data"))
+            end
+            specific = S3Backend(
+                id::UUID,
+                data.s3backend.region,
+                data.s3backend.endpoint,
+                data.s3backend.accesskeyid,
+                data.s3backend.secretaccesskeyhash
+            )
+            insertmodel!(db, specific)
+        else
+            throw(InvalidRequestError("Unknown backend type: $(data.type)"))
+        end
+    end
+    return Dict("id" => string(id))
+end
+
+updatebackend(req; context) = begin
+    idstr = req[:params][:id]
+    id = tryparse(UUID, idstr)
+    if isnothing(id)
+        throw(InvalidRequestError("Invalid UUID: $idstr"))
+    end
+    if !(allowadmindashboard in req[:jwt_identity].permissions)
+        throw(NotAuthorizedError())
+    end
+    transact(context.db) do db
+        existing = selectmodel(context.db, Identifier{RepositoryBackend}(id))
+        if isnothing(existing)
+            throw(NotFoundError("Backend not found"))
+        end
+        json = nothing
+        try
+            json = JSON.parse(getbody(req))
+        catch _
+            throw(InvalidRequestError("Invalid JSON body"))
+        end
+        if "id" in keys(json) && json["id"] != idstr
+            throw(InvalidRequestError("Backend ID in URL and body do not match"))
+        end
+        json["id"] = idstr
+        data = StructUtils.make(RepositoryBackendWithData, json)
+        if data.type != existing.type
+            throw(InvalidRequestError("Cannot change backend type"))
+        end
+        if data.type == s3backend
+            if isnothing(data.s3backend)
+                throw(InvalidRequestError("Missing S3 backend data"))
+            end
+            existings3 = selectmodel(db, Identifier{S3Backend}(id))
+            if isnothing(data.s3backend.secretaccesskeyhash)
+                data.s3backend.secretaccesskeyhash = existings3.secretaccesskeyhash
+            end
+            specific = S3Backend(
+                id::UUID,
+                data.s3backend.region,
+                data.s3backend.endpoint,
+                data.s3backend.accesskeyid,
+                data.s3backend.secretaccesskeyhash
+            )
+            updatemodel!(db, specific)
+        else
+            throw(InvalidRequestError("Unknown backend type: $(data.type)"))
+        end
+    end
+end
+
+macro migrations(dirname)
+    dirname = joinpath(@__DIR__, dirname)
+    function includefile(filename)
+        contents = open(filename) do f
+            read(f, String)
+        end
+        Meta.parse("$contents")
+    end
+    files = readdir(dirname)
+    exprs = Expr[
+        :(1 => Migration($(includefile(joinpath(dirname, file)))...))
+    for file in sort(files) if endswith(file, ".jl")]
+    migrations = esc(Expr(:tuple, exprs...))
+    return :(
+        Migrations($migrations...)
     )
-)
+end
+
+const migrations = @migrations("migrations")
 
 macro templatefile_str(filename)
     contents = open(filename) do f
@@ -372,6 +464,7 @@ indexresponse(method, html) = method != "HEAD" ? Dict{Symbol, Any}(
 )
 
 showrepositories(req; context) = begin
+    # TODO: can we cache this?  
     repos = selectmodels(context.db, Repository)
     return indexresponse(req[:method], fillindex("/", [IndexEntry(
         "$(repo.name)/",
@@ -381,6 +474,7 @@ showrepositories(req; context) = begin
 end
 
 showindex(req, rest, repositoryname, path; context) = begin
+    # TODO: can we cache this?
     parent = Identifier{RepositoryIndex}(
         Identifier{Repository}(repositoryname),
         path,
@@ -416,10 +510,29 @@ showindex(req, rest, repositoryname, path; context) = begin
     return indexresponse(req[:method], fillindex("/"+path, entries))
 end
 
+function AWS.generate_service_url(cfg::CustomAWSConfig, service::String, resource::String)
+    service == "s3" || throw(ArgumentError("Only supports S3 service requests; got $service"))
+    string(cfg.endpoint, resource)
+end
+
+AWS.region(cfg::CustomAWSConfig) = cfg.region
+AWS.credentials(cfg::CustomAWSConfig) = cfg.credentials
+
 function context()
-    c = Context(Database(LibPQ.Connection(
+    db = Database(LibPQ.Connection(
         "host=$(ENV["LARDER_DB_HOST"]) port=$(ENV["LARDER_DB_PORT"]) dbname=$(ENV["LARDER_DB_NAME"]) user=$(ENV["LARDER_DB_USER"]) password=$(ENV["LARDER_DB_PASSWORD"])"
-    )))
+    ))
+    c = Context(
+        db,
+        CustomAWSConfig(;
+            region = ENV["LARDER_S3_REGION"],
+            endpoint = ENV["LARDER_S3_ENDPOINT"],
+            credentials = AWSCredentials(
+                ENV["LARDER_S3_ACCESS_KEY_ID"],
+                ENV["LARDER_S3_SECRET_ACCESS_KEY"]
+            )
+        )
+    )
     
     migrate(c.db, migrations, lastversion(migrations))
     return c

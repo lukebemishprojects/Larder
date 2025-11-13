@@ -46,6 +46,14 @@ export function BoxWithHeader(props: { children: [JSX.Element, JSX.Element] }) {
     )
 }
 
+export function TextInput(props: { type: string, placeholder: string, value: string, onchange: (value: string) => void, input?: JSX.InputHTMLAttributes<HTMLInputElement> }) {
+    return (
+        <input type={props.type} class="bg-white border-1 rounded-md p-2.5 text-sm bg-slate-150 focus:inset-ring-blue-500 focus:border-1 focus:ring-0 focus:outline-none focus:shadow-none focus:inset-ring-2 w-full" placeholder={props.placeholder} value={props.value} oninput={(e) => {
+            props.onchange(e.target.value)
+        }} {...props.input} />
+    )
+}
+
 export function TextInputGroup(props: { type: string, placeholder: string, accessor?: Accessor<string>, setter?: (value: string) => void, input?: JSX.InputHTMLAttributes<HTMLInputElement> } & ({ units: JSX.Element } | { submit: JSX.Element, onsubmit: (target: HTMLInputElement) => Promise<void> | void, allowenter?: boolean })) {
     let reference!: HTMLInputElement;
     return (
@@ -58,13 +66,13 @@ export function TextInputGroup(props: { type: string, placeholder: string, acces
                 props.setter?.(e.target.value)
             }} {...props.input}/>
             {'units' in props ? <div class="bg-slate-150 rounded-md border-1 border-l-0 p-2.5 block text-sm rounded-l-none">{props.units}</div> :
-                <button class="font-semibold bg-white rounded-md border-1 border-l-0 p-2.5 block text-sm rounded-l-none cursor-pointer bg-slate-150 hover:bg-slate-200" onclick={async () => await props.onsubmit(reference)}>{props.submit}</button>}
+                <button class="font-semibold bg-white rounded-md border-1 border-l-0 p-2.5 block text-sm rounded-l-none cursor-pointer hover:bg-slate-200" onclick={async () => await props.onsubmit(reference)}>{props.submit}</button>}
         </div>
     )
 }
 
 export function Button(props: { children: JSX.Element, disabled?: boolean, onclick?: () => Promise<void> | void }) {
-    return (<button class="font-semibold bg-white rounded-md text-sm border-1 py-2.5 px-3 block cursor-pointer bg-slate-150 hover:bg-slate-200 disabled:text-slate-400 disabled:bg-slate-150 disabled:cursor-auto"
+    return (<button class="font-semibold bg-white rounded-md text-sm border-1 py-2.5 px-3 block cursor-pointer hover:bg-slate-200 disabled:text-slate-400 disabled:bg-slate-150 disabled:cursor-auto"
         disabled={props.disabled} onclick={props.onclick}>
         {props.children}
     </button>)

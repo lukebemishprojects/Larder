@@ -1,4 +1,17 @@
 services:
+  minio:
+    container_name: minio
+    image: minio/minio:latest
+    restart: unless-stopped
+    ports:
+      - 9000:9000
+      - 9001:9001
+    command: "minio server --console-address 0.0.0.0:9001 /data"
+    volumes:
+      - type: volume
+        source: minio-data
+        target: /data
+
   postgres:
     container_name: postgres
     image: postgres:17-alpine
@@ -21,3 +34,4 @@ services:
 
 volumes:
   larder-data:
+  minio-data:

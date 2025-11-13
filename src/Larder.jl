@@ -132,6 +132,8 @@ function app(apicontext)
             apipage("dashboard/admin/api/listusers", api.listusers),
             apipage("dashboard/admin/api/repositories", api.listrepositories),
             apipage("dashboard/admin/api/repositories/:repositoryname", api.getrepository),
+            apipage("dashboard/admin/api/backends", api.listbackends),
+            apipage("dashboard/admin/api/backends/:id", api.getbackend),
 
             apipage("dashboard/api/whoami", api.whoami),
             apipage("dashboard/api/namespaces/:user/list", api.listnamespaces),
@@ -152,11 +154,14 @@ function app(apicontext)
             apipage("dashboard/admin/api/namespaces/:user/confirm/:namespace", api.confirmnamespace),
             apipage("dashboard/admin/api/namespaces/:user/delete/:namespace", api.removenamespace),
             apipage("dashboard/admin/api/repositories/:repositoryname", api.updaterepository),
+            apipage("dashboard/admin/api/backends/:id", api.updatebackend),
+            apipage("dashboard/admin/api/backends", api.createbackend),
 
             apipage("dashboard/api/namespaces/:user/request/:namespace", api.requestnamespace),
         )),
         formethod("DELETE", Mux.stack(
-            apipage("dashboard/admin/api/repositories/:repositoryname", api.removerepository)
+            apipage("dashboard/admin/api/repositories/:repositoryname", api.removerepository),
+            apipage("dashboard/admin/api/backends/:id", api.removebackend)
         )),
         Mux.notfound()
     )

@@ -50,7 +50,7 @@ include("types.jl")
 
 constraints(::Type{T}, columns) where T = []
 
-export Migration, Migrations, lastversion, tablename, migrate, execute, transact, selectmodels, selectmodel, updatemodel!, deletemodel!, insertmodel!, schema
+export Migration, Migrations, lastversion, tablename, migrate, execute, transact, selectmodels, selectmodel, updatemodel!, deletemodel!, deletemodels!, insertmodel!, schema
 
 struct Migration
     up::Function
@@ -126,7 +126,7 @@ function migrate(db::PostgresDatabase, migrations::Migrations, version)
 end
 
 function tablename(::Type{T}) where T <: Model
-    lowercase(string(Symbol(T)))
+    lowercase(string(nameof(T)))
 end
 
 function dbcolnames(f, t)
@@ -199,7 +199,9 @@ end
 
 function selectmodels(db::PostgresDatabase, ::Type{T}, match::Vector{S} where S <: Pair{Symbol}) where T <: Model
     colnames = Iterators.flatten(dbcolnames(f, r) for (f, r) in fieldsbytype(T))
-    whereclause = join(["$(dbcolnames(p[1], fieldtype(T, p[1]))[1]) = ?" for p ∈ match], " AND ")
+    whereclause = join(Iterators.flatten([
+        "$(colname) = ?" for colname ∈ dbcolnames(p[1], fieldtype(T, p[1]))
+    ] for p ∈ match), " AND ")
     query = "SELECT $(join(colnames, ", ")) FROM $(tablename(T)) WHERE $whereclause;"
     args = tuple(Iterators.flatten(encode(p[2], fieldtype(T, p[1])) for p ∈ match)...)
     results = execute(db, query, args)
@@ -256,6 +258,15 @@ function deletemodel!(db::PostgresDatabase, id::Identifier{T}) where T <: Model
     whereclause = join(map(idcols) do name "$name = ?" end, " AND ")
     query = "DELETE FROM $(tablename(T)) WHERE $whereclause;"
     execute(db, query, encode(id, Identifier{T}))
+end
+
+function deletemodels!(db::PostgresDatabase, ::Type{T}, match::Vector{S} where S <: Pair{Symbol}) where T <: Model
+    whereclause = join(Iterators.flatten([
+        "$(colname) = ?" for colname ∈ dbcolnames(p[1], fieldtype(T, p[1]))
+    ] for p ∈ match), " AND ")
+    query = "DELETE FROM $(tablename(T)) WHERE $whereclause;"
+    args = tuple(Iterators.flatten(encode(p[2], fieldtype(T, p[1])) for p ∈ match)...)
+    execute(db, query, args)
 end
 
 function insertmodel!(db::PostgresDatabase, value::T) where T <: Model

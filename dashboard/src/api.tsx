@@ -98,3 +98,54 @@ export function isRepositoryNameValid(repositoryname: string): boolean {
 
 export const Repositories = ListResponse(Repository);
 export type Repositories = ListResponse<Repository>;
+
+export const Backend = z.object({
+    id: z.uuid(),
+    type: z.enum(["s3backend"])
+});
+export type Backend = z.infer<typeof Backend>;
+
+export const Backends = ListResponse(Backend);
+export type Backends = ListResponse<Backend>;
+
+export const S3Backend = z.object({
+    region: z.string(),
+    endpoint: z.string(),
+    accesskeyid: z.string(),
+    secretaccesskey: z.string().optional()
+});
+export type S3Backend = z.infer<typeof S3Backend>;
+export function newS3Backend(): S3Backend {
+    return {
+        region: "",
+        endpoint: "",
+        accesskeyid: "",
+        secretaccesskey: ""
+    };
+}
+
+export const BackendConfiguration = z.object({
+    id: z.uuid().optional(),
+    type: z.enum(["s3backend"]),
+    s3config: S3Backend.optional()
+});
+export type BackendConfiguration = z.infer<typeof BackendConfiguration>;
+export function newBackendConfiguration(): BackendConfiguration {
+    return {
+        type: "s3backend",
+        s3config: newS3Backend()
+    };
+}
+export function calculateBackendName(backend: BackendConfiguration): string {
+    switch (backend.type) {
+        case "s3backend":
+            return `S3 (${backend.s3config?.endpoint})`;
+    }
+}
+
+export function backendTypePrettyName(type: BackendConfiguration["type"]): string {
+    switch (type) {
+        case "s3backend": return "S3 Backend";
+    }
+}
+
