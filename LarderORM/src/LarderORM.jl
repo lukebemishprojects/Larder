@@ -1,7 +1,6 @@
 module LarderORM
 
 import LibPQ
-using StructTypes
 using Tables
 
 export Model, Database, Identifier, Representation, constraints, uniqueidentifier
@@ -30,8 +29,7 @@ struct ConcreteIdentifier{T <: Model} <: Identifier{T}
 end
 
 function uniqueidentifier(::Type{T}) where T <: Model
-    idprop = StructTypes.idproperty(T)
-    idprop == :_ ? fieldnames(T) : (idprop,)
+    fieldnames(T)
 end
 
 function Identifier{T}(t::T) where T <: Model

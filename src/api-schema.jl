@@ -40,30 +40,6 @@ end
 LarderORM.tablename(::Type{UserNamespace}) = "usernamespaces"
 LarderORM.uniqueidentifier(::Type{UserNamespace}) = (:id, :namespace)
 
-@schema struct Repository <: Model
-    name::String
-    supportsmavendeploy::Bool
-    supportspublishportal::Bool
-    expirationdays::Int32
-    mutable::Bool
-end
-
-LarderORM.tablename(::Type{Repository}) = "repositories"
-LarderORM.uniqueidentifier(::Type{Repository}) = (:name, )
-
-@schema struct RepositoryIndex <: Model
-    repository::Identifier{Repository}
-    path::String
-    name::String
-    isdirectory::Bool
-    lastmodified::Union{DateTime, Nothing}
-    size::Union{Int64, Nothing}
-    expires::Int64
-end
-
-LarderORM.tablename(::Type{RepositoryIndex}) = "repositoryindices"
-LarderORM.uniqueidentifier(::Type{RepositoryIndex}) = (:repository, :path, :name)
-
 export RepositoryBackendType, s3backend
 @enum RepositoryBackendType::Int32 s3backend
 LarderORM.representation(::Type{RepositoryBackendType}) = LarderORM.representation(Int32)
@@ -89,13 +65,30 @@ end
 LarderORM.tablename(::Type{S3Backend}) = "s3backends"
 LarderORM.uniqueidentifier(::Type{S3Backend}) = (:id,)
 
-@schema struct RepositoryBackendConfiguration <: Model
-    repository::Identifier{Repository}
+@schema struct Repository <: Model
+    name::String
+    supportsmavendeploy::Bool
+    supportspublishportal::Bool
+    expirationdays::Int32
+    mutable::Bool
     backend::Identifier{RepositoryBackend}
 end
 
-LarderORM.tablename(::Type{RepositoryBackendConfiguration}) = "repositorybackendconfigurations"
-LarderORM.uniqueidentifier(::Type{RepositoryBackendConfiguration}) = (:repository,)
+LarderORM.tablename(::Type{Repository}) = "repositories"
+LarderORM.uniqueidentifier(::Type{Repository}) = (:name, )
+
+@schema struct RepositoryIndex <: Model
+    repository::Identifier{Repository}
+    path::String
+    name::String
+    isdirectory::Bool
+    lastmodified::Union{DateTime, Nothing}
+    size::Union{Int64, Nothing}
+    expires::Int64
+end
+
+LarderORM.tablename(::Type{RepositoryIndex}) = "repositoryindices"
+LarderORM.uniqueidentifier(::Type{RepositoryIndex}) = (:repository, :path, :name)
 
 @schema struct S3BackendConfigurations <: Model
     repository::Identifier{Repository}

@@ -10,4 +10,3 @@ export function OrError(props: { get: Accessor<OrError> }) {
         <div class="text-red-500 text-xs px-1">{(props.get() as { err:any }).err}</div>
     </Show>
 }
-

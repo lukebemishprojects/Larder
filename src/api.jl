@@ -161,6 +161,21 @@ isvalidrepositoryname(name::AbstractString) = begin
     !isnothing(match(r"^[a-z0-9._-]+$", name)) && !(name in reservedpaths)
 end
 
+@kwdef mutable struct S3BackendConfigurationUpdate
+    bucket::String
+    prefix::String
+end
+
+@kwdef mutable struct RepositoryUpdate
+    name::String
+    supportsmavendeploy::Bool
+    supportspublishportal::Bool
+    expirationdays::Int32
+    mutable::Bool
+    backend::Identifier{RepositoryBackend}
+    s3backend::Union{S3BackendConfigurationUpdate, Nothing}
+end
+
 updaterepository(req; context) = begin
     repositoryname = req[:params][:repositoryname]
     if !(allowadmindashboard in req[:jwt_identity].permissions)
@@ -179,8 +194,16 @@ updaterepository(req; context) = begin
         throw(InvalidRequestError("Repository name in URL and body do not match"))
     end
     json["name"] = repositoryname
-    repo = StructUtils.make(Repository, json)
-    if repo.expirationdays < 0
+    repoupdate = StructUtils.make(RepositoryUpdate, json)
+    repo = Repository(
+        repoupdate.name,
+        repoupdate.supportsmavendeploy,
+        repoupdate.supportspublishportal,
+        repoupdate.expirationdays,
+        repoupdate.mutable,
+        repoupdate.backend
+    )
+    if repoupdate.expirationdays < 0
         throw(InvalidRequestError("Expiration days must be non-negative"))
     end
     transact(context.db) do db
@@ -189,6 +212,25 @@ updaterepository(req; context) = begin
             insertmodel!(db, repo)
         elseif existing != repo
             updatemodel!(db, repo)
+        end
+
+        backend = selectmodel(db, repoupdate.backend)
+        if backend.type == s3backend
+            if isnothing(repoupdate.s3backend)
+                throw(InvalidRequestError("Missing S3 backend configuration"))
+            end
+            configuration = S3BackendConfigurations(
+                Identifier{Repository}(repo.name),
+                repoupdate.backend,
+                repoupdate.s3backend.bucket,
+                repoupdate.s3backend.prefix
+            )
+            existingconfiguration = selectmodel(db, Identifier(configuration))
+            if isnothing(existingconfiguration)
+                insertmodel!(db, configuration)
+            elseif existingconfiguration != configuration
+                updatemodel!(db, configuration)
+            end
         end
     end
     return Dict()
@@ -240,14 +282,14 @@ listbackends(req; context) = begin
     return ListResponse(backends)
 end
 
-@kwdef struct S3BackendData
+@kwdef mutable struct S3BackendData
     region::String
     endpoint::String
     accesskeyid::String
-    secretaccesskeyhash::Union{String, Nothing} = nothing
+    secretaccesskey::Union{String, Nothing} = nothing
 end
 
-@kwdef struct RepositoryBackendWithData
+@kwdef mutable struct RepositoryBackendWithData
     id::Union{UUID,Nothing}
     type::RepositoryBackendType
     s3backend::Union{S3BackendData,Nothing}
@@ -271,16 +313,16 @@ getbackend(req; context) = begin
         data = RepositoryBackendWithData(;
             id = backend.id,
             type = backend.type,
-            configuration = begin
+            s3backend = begin
                 if backend.type == s3backend
-                    specific = selectmodel(db, Identifier{S3Backend}(id))
+                    specific = selectmodel(db, Identifier{S3Backend}(Identifier(backend)))
                     S3BackendData(;
                         region = specific.region,
                         endpoint = specific.endpoint,
                         accesskeyid = specific.accesskeyid
                     )
                 else
-                    throw(InvalidRequestError("Unknown backend type: $(backend.type)"))
+                    nothing
                 end
             end
         )
@@ -324,25 +366,25 @@ createbackend(req; context) = begin
     end
     data.id = uuid4()
     transact(context.db) do db
-        backend = RepositoryBackend(id, data.type)
+        backend = RepositoryBackend(data.id, data.type)
         insertmodel!(db, backend)
         if data.type == s3backend
             if isnothing(data.s3backend)
                 throw(InvalidRequestError("Missing S3 backend data"))
             end
             specific = S3Backend(
-                id::UUID,
+                Identifier(backend),
                 data.s3backend.region,
                 data.s3backend.endpoint,
                 data.s3backend.accesskeyid,
-                data.s3backend.secretaccesskeyhash
+                data.s3backend.secretaccesskey
             )
             insertmodel!(db, specific)
         else
             throw(InvalidRequestError("Unknown backend type: $(data.type)"))
         end
     end
-    return Dict("id" => string(id))
+    return Dict("id" => string(data.id))
 end
 
 updatebackend(req; context) = begin
@@ -374,19 +416,20 @@ updatebackend(req; context) = begin
             throw(InvalidRequestError("Cannot change backend type"))
         end
         if data.type == s3backend
+            id = Identifier{RepositoryBackend}(data.id::UUID)
             if isnothing(data.s3backend)
                 throw(InvalidRequestError("Missing S3 backend data"))
             end
             existings3 = selectmodel(db, Identifier{S3Backend}(id))
-            if isnothing(data.s3backend.secretaccesskeyhash)
-                data.s3backend.secretaccesskeyhash = existings3.secretaccesskeyhash
+            if isnothing(data.s3backend.secretaccesskey)
+                data.s3backend.secretaccesskey = existings3.secretaccesskey
             end
             specific = S3Backend(
-                id::UUID,
+                id,
                 data.s3backend.region,
                 data.s3backend.endpoint,
                 data.s3backend.accesskeyid,
-                data.s3backend.secretaccesskeyhash
+                data.s3backend.secretaccesskey
             )
             updatemodel!(db, specific)
         else

@@ -1,5 +1,7 @@
 FROM julia:1.12.1-trixie
 
+# TODO: Probably more efficient to build a sysimage in terms of RAM used in prod
+
 ENV APP_ENV="prod"
 
 RUN useradd --create-home --shell /bin/bash app
