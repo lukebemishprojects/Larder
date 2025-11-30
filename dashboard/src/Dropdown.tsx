@@ -7,7 +7,7 @@ export interface DropdownEntry {
 	action: () => Promise<void>
 }
 
-export function Dropdown(props: { children: JSX.Element, entries: DropdownEntry[], classes?: string, dropdownClasses?: string, entryClasses?: string[], left?: boolean }) {
+export function Dropdown(props: { children: JSX.Element, entries: DropdownEntry[], classes?: string, dropdownClasses?: string, entryClasses?: string[], left?: boolean, dropdownWidth?: string }) {
 	const left = props.left ?? false
 	const dropdownClasses = props.dropdownClasses ?? []
 	const entryClasses = props.entryClasses ?? []
@@ -37,7 +37,7 @@ export function Dropdown(props: { children: JSX.Element, entries: DropdownEntry[
 			</button>
 			<Show when={dropdownVisible()}>
 				<div class={
-					["overflow-auto", "shadow-sm", "absolute", "z-10", "mt-2", "rounded-md", "bg-white", "focus:outline-hidden", "w-56"].concat(dropdownClasses).concat(left ? ["left-0", "origin-top-left"] : ["right-0", "origin-top-right"]).join(" ")
+					["overflow-auto", "shadow-sm", "absolute", "z-10", "mt-2", "rounded-md", "bg-white", "focus:outline-hidden", props.dropdownWidth ?? "w-56"].concat(dropdownClasses).concat(left ? ["left-0", "origin-top-left"] : ["right-0", "origin-top-right"]).join(" ")
 				} role="menu" aria-orientation="vertical" aria-labelledby="menu-button" tabindex="-1">
 					<div class="py-1" role="none">
 						<For each={props.entries}>{(entry) =>

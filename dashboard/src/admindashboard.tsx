@@ -27,7 +27,7 @@ function NamespaceCreation(props: { user: string, mutate: Setter<api.Namespaces 
                         setStatus({ status: "error", err: "Not a valid namespace! Must be a valid all-lowercase reversed domain name." });
                         return;
                     }
-                    setStatus({ status: "ok" });
+                    setStatus({ status: "working" });
                     setToCreate("");
                     props.mutate((namespaces) => {
                         return namespaces === undefined ? undefined : {
@@ -36,6 +36,7 @@ function NamespaceCreation(props: { user: string, mutate: Setter<api.Namespaces 
                     });
                     try {
                         await api.postURL(`/dashboard/admin/api/namespaces/${props.user}/create/${namespaceName}`)
+                        setStatus({ status: "ok" });
                     } catch (err: any) {
                         console.error(err);
                         setStatus({ status: "error", err: `Error: ${err}` });
@@ -215,21 +216,32 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                     min: "1"
                 }} />
             </Show>
-            <Dropdown classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={context.backends.values.map((backend) => {
+            <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={context.backends.values.map((backend) => {
                 return {
-                    value: api.calculateBackendName(backend),
+                    value: <div class="flex flex-row gap-2.5 w-full items-center">
+                        <div>{api.backendTypePrettyName(backend.type)}</div>
+                        <div class="flex-1"></div>
+                        <div class="font-mono text-xs text-slate-600">{backend.id}</div>
+                    </div>,
                     action: async () => {
-                        props.set("backend", backend.id);
                         setBackendType(backend.type);
+                        props.set("backend", backend.id);
                     }
                 }
             })}>
-                {props.value.backend ? api.calculateBackendName(context.backends.values.find((b) => b.id == props.value.backend)!) : "Select backend"}
+                {props.value.backend ? (() => {
+                    const matching = context.backends.values.find((b) => b.id == props.value.backend)!
+                    return <div class="flex flex-row gap-2.5 w-full items-center">
+                        <div>{api.backendTypePrettyName(matching.type)}</div>
+                        <div class="flex-1"></div>
+                        <div class="font-mono text-xs text-slate-600">{matching.id}</div>
+                    </div>
+                })() : "Select backend"}
                 <svg class="-mr-1 size-5 text-slate-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" data-slot="icon">
                     <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
                 </svg>
             </Dropdown>
-            <Show when={backendType() == "s3backend"}>
+            <Show when={backendType() == "s3backend" && props.value.s3backend}>
                 <TextInput type="text" placeholder="S3 bucket" value={props.value.s3backend!.bucket} onchange={(v) => {props.set("s3backend", "bucket", v)}} />
                 <TextInput type="text" placeholder="Prefix in bucket" value={props.value.s3backend!.prefix} onchange={(v) => {props.set("s3backend", "prefix", v)}} />
             </Show>
@@ -266,9 +278,10 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
                         if (!api.validateRepository(current, setStatus)) {
                             return;
                         }
-                        setStatus({ status: "ok" });
+                        setStatus({ status: "working" });
                         try {
                             await api.postJSON(`/dashboard/admin/api/repositories/${props.repository.name}`, current);
+                            setStatus({ status: "ok" });
                         } catch (err: any) {
                             console.error(err);
                             setStatus({ status: "error", err: `Error: ${err}` });
@@ -298,20 +311,16 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
                     <Show when={isDeleting()}>
                         <TextInputGroup type="text" placeholder={"Type '"+props.repository.name+"' to confirm deletion. Deletion is permanent and cannot be undone"} submit="Delete" allowenter={false} onsubmit={async (target) => {
                             if (target.value === props.repository.name) {
-                                setStatus({ status: "ok" });
-                                props.mutate((repositories) => {
-                                    return repositories === undefined ? undefined : {
-                                        values: repositories.values.filter((r) => r.name != props.repository.name)
-                                    };
-                                });
+                                setStatus({ status: "working" });
                                 try {
                                     await api.deleteURL(`/dashboard/admin/api/repositories/${props.repository.name}`);
+                                    setStatus({ status: "ok" });
+                                    await props.refetch();
                                 } catch (err: any) {
                                     console.error(err);
-                                    setStatus({ status: "error", err: `Error: ${err}` });
+                                    setStatus({ status: "error", err: `${err}` });
                                     return;
                                 }
-                                await props.refetch();
                             }
                         }} />
                     </Show>
@@ -355,7 +364,7 @@ function RepositoriesList() {
                         return;
                     }
                     setToCreate(api.newRepository());
-                    setStatus({ status: "ok" });
+                    setStatus({ status: "working" });
                     mutate((repositories) => {
                         return repositories === undefined ? undefined : {
                             values: [...repositories.values, current]
@@ -364,6 +373,7 @@ function RepositoriesList() {
 
                     try {
                         await api.postJSON(`/dashboard/admin/api/repositories/${current.name}`, current);
+                        setStatus({ status: "ok" });
                     } catch (err: any) {
                         console.error(err);
                         setStatus({ status: "error", err: `Error: ${err}` });
@@ -454,7 +464,7 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                 }
                 return <BoxWithHeader>
                     <div class="flex flex-row gap-2.5 w-full items-center">
-                        <div>{api.calculateBackendName(item())}</div>
+                        <div>{api.backendTypePrettyName(item().type)}</div>
                         <div class="flex-1"></div>
                         <div class="font-mono text-xs text-slate-600">{props.backend.id}</div>
                     </div>
@@ -465,10 +475,11 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                         <InnerElement>
                             <div class="flex flex-row gap-2.5 w-full items-center">
                                 <Button disabled={!isDirty()} onclick={async () => {
-                                    setStatus({ status: "ok" });
+                                    setStatus({ status: "working" });
                                     const current = { ...unwrap(toSet) }
                                     try {
                                         await api.postJSON(`/dashboard/admin/api/backends/${props.backend.id}`, current);
+                                        setStatus({ status: "ok" });
                                     } catch (err: any) {
                                         console.error(err);
                                         setStatus({ status: "error", err: `Error: ${err}` });
@@ -497,20 +508,16 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                                 </Show>
                                 <Show when={isDeleting()}>
                                     <Button onclick={async () => {
-                                        setStatus({ status: "ok" });
-                                        props.mutate((backends) => {
-                                            return backends === undefined ? undefined : {
-                                                values: backends.values.filter((r) => r.id != props.backend.id)
-                                            };
-                                        });
+                                        setStatus({ status: "working" });
                                         try {
                                             await api.deleteURL(`/dashboard/admin/api/backends/${props.backend.id}`);
+                                            setStatus({ status: "ok" });
+                                            await props.refetch();
                                         } catch (err: any) {
                                             console.error(err);
                                             setStatus({ status: "error", err: `Error: ${err}` });
                                             return;
                                         }
-                                        await props.refetch();
                                     }}>
                                         Confirm
                                     </Button>
@@ -562,9 +569,10 @@ function BackendsList() {
                 <button class="border-l-0 font-semibold bg-white rounded-md text-sm border-1 py-2.5 px-3 block cursor-pointer bg-slate-150 hover:bg-slate-200 rounded-l-none" onclick={async () => {
                     const current = { ...unwrap(toCreate) }
                     setToCreate(api.newBackendConfiguration());
-                    setStatus({ status: "ok" });
+                    setStatus({ status: "working" });
                     try {
                         await api.postJSON(`/dashboard/admin/api/backends`, current);
+                        setStatus({ status: "ok" });
                     } catch (err: any) {
                         console.error(err);
                         setStatus({ status: "error", err: `Error: ${err}` });

@@ -221,7 +221,7 @@ updaterepository(req; context) = begin
             end
             configuration = S3BackendConfigurations(
                 Identifier{Repository}(repo.name),
-                repoupdate.backend,
+                Identifier{S3Backend}(repoupdate.backend),
                 repoupdate.s3backend.bucket,
                 repoupdate.s3backend.prefix
             )
@@ -271,7 +271,29 @@ listrepositories(req; context) = begin
     if !(allowdashboard in req[:jwt_identity].permissions)
         throw(NotAuthorizedError())
     end
-    ListResponse(selectmodels(context.db, Repository))
+    return transact(context.db) do db
+        ListResponse(map(selectmodels(db, Repository)) do repository
+            backend = selectmodel(db, repository.backend)
+            RepositoryUpdate(
+                repository.name,
+                repository.supportsmavendeploy,
+                repository.supportspublishportal,
+                repository.expirationdays,
+                repository.mutable,
+                repository.backend,
+                if backend.type == s3backend
+                    specific = selectmodel(db, Identifier{S3Backend}(Identifier(backend)))
+                    configuration = selectmodel(db, Identifier{S3BackendConfigurations}(
+                        Identifier(repository)
+                    ))
+                    S3BackendConfigurationUpdate(
+                        configuration.bucket,
+                        configuration.prefix
+                    )
+                else nothing end,
+            )
+        end)
+    end
 end
 
 listbackends(req; context) = begin
@@ -340,12 +362,13 @@ removebackend(req; context) = begin
         throw(NotAuthorizedError())
     end
     transact(context.db) do db
-        inuse = selectmodels(db, RepositoryBackendConfiguration, [:backend => Identifier{RepositoryBackend}(id)])
+        inuse = selectmodels(db, Repository, [:backend => Identifier{RepositoryBackend}(id)])
         if length(inuse) > 0
             throw(InvalidRequestError("Cannot delete backend still in use by repositories"))
         end
-        deletemodel!(db, Identifier{RepositoryBackend}(id))
-        deletemodel!(db, Identifier{S3Backend}(id))
+        repositoryid = Identifier{RepositoryBackend}(id)
+        deletemodel!(db, Identifier{S3Backend}(repositoryid))
+        deletemodel!(db, repositoryid)
     end
     return Dict()
 end

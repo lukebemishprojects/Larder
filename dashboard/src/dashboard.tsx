@@ -30,7 +30,7 @@ function NamespaceList() {
                         setStatus({ status: "error", err: "Not a valid namespace! Must be a valid all-lowercase reversed domain name." });
                         return;
                     }
-                    setStatus({ status: "ok" });
+                    setStatus({ status: "working" });
                     setToRequest("");
                     mutate((namespaces) => {
                         return namespaces === undefined ? undefined : {
@@ -39,6 +39,7 @@ function NamespaceList() {
                     });
                     try {
                         await api.postURL(`/dashboard/api/namespaces/${context!.identity.id}/request/${namespaceName}`)
+                        setStatus({ status: "ok" });
                     } catch (err: any) {
                         console.error(err);
                         setStatus({ status: "error", err: `Error: ${err}` });

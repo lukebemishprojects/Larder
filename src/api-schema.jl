@@ -1,6 +1,7 @@
 using UUIDs
 using Dates
 using LarderORM
+using StructUtils
 using JSON
 
 module schematypes
@@ -8,6 +9,7 @@ module schematypes
 using UUIDs
 using Dates
 using LarderORM
+using StructUtils
 using JSON
 
 const schematypes = Symbol[]
@@ -42,6 +44,9 @@ LarderORM.uniqueidentifier(::Type{UserNamespace}) = (:id, :namespace)
 
 export RepositoryBackendType, s3backend
 @enum RepositoryBackendType::Int32 s3backend
+const _backendDict = Dict{Symbol, RepositoryBackendType}([Symbol(i) => i for i ∈ instances(RepositoryBackendType)])
+convert(::Type{RepositoryBackendType}, value::Symbol) = _backendDict[value]
+
 LarderORM.representation(::Type{RepositoryBackendType}) = LarderORM.representation(Int32)
 LarderORM.encode(value::RepositoryBackendType, ::Type{RepositoryBackendType}) = LarderORM.encode(Int32(value), Int32)
 LarderORM.decode(value::Tuple{Int32}, ::Type{RepositoryBackendType}) = RepositoryBackendType(value[1])
@@ -127,12 +132,41 @@ for t ∈ schematypes
     @eval const $(nameof(t)) = $t
 end
 
+StructUtils.structlike(::Type{Identifier{T}}) where T <: Model = false
+StructUtils.structlike(::Type{RepositoryBackendType}) = false
+
+StructUtils.lower(id::Identifier{T}) where T <: Model = begin
+    properties = LarderORM.uniqueidentifier(T)
+    if (length(properties) == 1)
+        return id.values[1]
+    end
+    Dict((property => id.values[i] for (i, property) ∈ enumerate(properties))...)
+end
+StructUtils.lower(type::RepositoryBackendType) = string(Symbol(type))
+
 JSON.lower(uuid::UUID) = string(uuid)
 JSON.lower(id::Identifier{T}) where T <: Model = begin
     properties = LarderORM.uniqueidentifier(T)
+    if (length(properties) == 1)
+        return id.values[1]
+    end
     Dict((property => id.values[i] for (i, property) ∈ enumerate(properties))...)
 end
 JSON.lower(type::RepositoryBackendType) = string(Symbol(type))
+
+StructUtils.dictlike(::Type{Identifier{T}}) where T <: Model = length(LarderORM.uniqueidentifier(T)) > 1
+StructUtils.lift(::Type{Identifier{T}}, value) where T <: Model = begin
+    properties = LarderORM.uniqueidentifier(T)
+    if isa(value, Dict)
+        vals = tuple((StructUtils.make(fieldtype(T, property), value[property]) for property ∈ properties)...)
+        return Identifier{T}(vals...)
+    elseif length(properties) != 1
+        throw(ArgumentError("Cannot lift Identifier{$(T)} from non-dict value when it has multiple properties"))
+    else
+        return Identifier{T}(StructUtils.make(fieldtype(T, properties[1]), value))
+    end
+end
+StructUtils.lift(::Type{RepositoryBackendType}, value) = convert(Symbol(value), RepositoryBackendType)
 
 function printschemas()
     for T in schematypes

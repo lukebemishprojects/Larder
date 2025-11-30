@@ -2,6 +2,10 @@ import { Setter } from 'solid-js';
 import { z } from 'zod';
 import { OrError } from './utils';
 
+export function nullishOptional<R>(schema: z.ZodType<R>): z.ZodOptional<z.ZodType<R | undefined>> {
+    return schema.nullish().transform( x => x ?? undefined ).optional();
+}
+
 export async function fetchJSON<S extends z.ZodObject>(url: string, schema: S): Promise<z.infer<S>> {
     const response = await fetch(url).then((response) => {
         if (!response.ok) {
@@ -85,7 +89,7 @@ export type Backends = ListResponse<Backend>;
 
 export const S3BackendConfiguration = z.object({
     bucket: z.string().nonempty(),
-    prefix: z.string().nonempty()
+    prefix: z.string()
 });
 export type S3BackendConfiguration = z.infer<typeof S3BackendConfiguration>;
 export function newS3BackendConfiguration(): S3BackendConfiguration {
@@ -101,8 +105,8 @@ export const Repository = z.object({
     supportspublishportal: z.boolean(),
     expirationdays: z.number().nonnegative(),
     mutable: z.boolean(),
-    backend: Backend.shape.id.optional(),
-    s3backend: S3BackendConfiguration.optional()
+    backend: nullishOptional(Backend.shape.id),
+    s3backend: nullishOptional(S3BackendConfiguration)
 });
 export type Repository = z.infer<typeof Repository>;
 export function newRepository(): Repository {
@@ -139,7 +143,7 @@ export const S3Backend = z.object({
     region: z.string(),
     endpoint: z.string(),
     accesskeyid: z.string(),
-    secretaccesskey: z.string().optional()
+    secretaccesskey: nullishOptional(z.string())
 });
 export type S3Backend = z.infer<typeof S3Backend>;
 export function newS3Backend(): S3Backend {
@@ -152,9 +156,9 @@ export function newS3Backend(): S3Backend {
 }
 
 export const BackendConfiguration = z.object({
-    id: z.uuid().optional(),
+    id: nullishOptional(z.uuid()),
     type: z.enum(["s3backend"]),
-    s3backend: S3Backend.optional()
+    s3backend: nullishOptional(S3Backend)
 });
 export type BackendConfiguration = z.infer<typeof BackendConfiguration>;
 export function newBackendConfiguration(): BackendConfiguration {
@@ -163,16 +167,10 @@ export function newBackendConfiguration(): BackendConfiguration {
         s3backend: newS3Backend()
     };
 }
-export function calculateBackendName(backend: BackendConfiguration): string {
-    switch (backend.type) {
-        case "s3backend":
-            return `S3 (${backend.s3backend?.endpoint})`;
-    }
-}
 
 export function backendTypePrettyName(type: BackendConfiguration["type"]): string {
     switch (type) {
-        case "s3backend": return "S3 Backend";
+        case "s3backend": return "S3";
     }
 }
 
