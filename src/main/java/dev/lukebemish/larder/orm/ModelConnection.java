@@ -3,17 +3,17 @@ package dev.lukebemish.larder.orm;
 import java.sql.Connection;
 import java.sql.SQLException;
 
-public class ModelConnection implements AutoCloseable {
+public class ModelConnection {
     private final Connection connection;
 
     public ModelConnection(Connection connection) throws SQLException {
         this.connection = connection;
     }
-    
+
     Connection connection() {
         return this.connection;
     }
-    
+
     private boolean reentrantCheck = false;
 
     public void transact(SQLConsumer<ModelConnection> consumer) throws SQLException {
@@ -40,8 +40,7 @@ public class ModelConnection implements AutoCloseable {
         }
     }
 
-    @Override
-    public void close() throws SQLException {
+    public void closeConnection() throws SQLException {
         this.connection.close();
     }
 }

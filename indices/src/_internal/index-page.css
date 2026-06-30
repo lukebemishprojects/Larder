@@ -1,0 +1,9 @@
+@import 'tailwindcss';
+
+@theme {
+    --color-bg-150: oklch(94.9% 0.010 251.702)
+}
+
+@utility bg-slate-150 {
+    background-color: var(--color-bg-150);
+}

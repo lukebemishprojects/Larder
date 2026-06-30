@@ -35,13 +35,13 @@ public final class Representation<T extends Model> {
             this.indexMap = indexMap;
         }
     }
-    
+
     final String tableName;
     private final List<Field<T, ?>> fields;
     private final SQLFunction<Result, T> reconstructor;
     final List<Field<T, ?>> idFields;
     private final Object schemaKey;
-    
+
     public sealed abstract static class Field<T extends Model, F> {
         protected final String name;
         final Function<T, F> encoder;
@@ -60,24 +60,24 @@ public final class Representation<T extends Model> {
         List<String> columns(String thisName) {
             return List.of(thisName);
         }
-        
+
         public F get(Result result) throws SQLException {
             if (result.schemaKey != this.schemaKey) {
                 throw new IllegalArgumentException("Attempted to use field to decode result of wrong schema");
             }
             return get(result.resultSet, result.indexMap.get(this));
         }
-        
+
         abstract void write(int offset, PreparedStatement statement, F value) throws SQLException;
         void writeEncode(int offset, PreparedStatement statement, T value) throws SQLException {
             write(offset, statement, encoder.apply(value));
         }
     }
-    
+
     public static final class ReferenceField<T extends Model, F extends Model> extends Field<T, Identifier<F>> {
         private final Supplier<Representation<F>> referenceRepresentation;
         private final Object schemaKey;
-        
+
         private ReferenceField(String name, Function<T, Identifier<F>> encoder, Supplier<Representation<F>> referenceRepresentation, Object schemaKey) {
             super(name, encoder, schemaKey);
             this.referenceRepresentation = referenceRepresentation;
@@ -183,7 +183,7 @@ public final class Representation<T extends Model> {
     private static <S> void writeField(int offset, PreparedStatement statement, Field<?, S> field, Object value) throws SQLException {
         field.write(offset, statement, (S) value);
     }
-    
+
     public static final class RequiredField<T extends Model, F> extends Field<T, F> {
         private final DatabasePrimitiveType<F> primitiveType;
 
@@ -263,7 +263,7 @@ public final class Representation<T extends Model> {
             return List.of();
         }
     }
-    
+
     public static <T extends Model> Representation<T> build(Function<Builder<T>, Representation<T>> function) {
         var builder = new Builder<T>();
         return function.apply(builder);
@@ -271,22 +271,25 @@ public final class Representation<T extends Model> {
 
     private static boolean execute(ModelConnection connection, String query, SQLConsumer<PreparedStatement> action) throws SQLException {
         var stmt = connection.connection().prepareStatement(query);
+        action.accept(stmt);
         return stmt.execute();
     }
 
     private static int executeUpdate(ModelConnection connection, String query, SQLConsumer<PreparedStatement> action) throws SQLException {
         var stmt = connection.connection().prepareStatement(query);
+        action.accept(stmt);
         return stmt.executeUpdate();
     }
 
     private static ResultSet executeQuery(ModelConnection connection, String query, SQLConsumer<PreparedStatement> action) throws SQLException {
         var stmt = connection.connection().prepareStatement(query);
+        action.accept(stmt);
         return stmt.executeQuery();
     }
-    
+
     private T read(ResultSet resultSet) throws SQLException {
         var map = new IdentityHashMap<Field<?, ?>, Integer>();
-        int offset = 0;
+        int offset = 1;
         for (var f : fields) {
             map.put(f, offset);
             offset += f.size();
@@ -295,25 +298,25 @@ public final class Representation<T extends Model> {
         return reconstructor.apply(result);
     }
 
-    private void writeFull(PreparedStatement statement, T value) throws SQLException {
-        int offset = 0;
+    private int writeFull(int offset, PreparedStatement statement, T value) throws SQLException {
         for (var f : fields) {
             f.writeEncode(offset, statement, value);
             offset += f.size();
         }
+        return offset;
     }
 
-    private void writeIdentifier(PreparedStatement statement, Identifier<T> value) throws SQLException {
-        int offset = 0;
-        if (value.args.length != fields.size()) {
+    private int writeIdentifier(int offset, PreparedStatement statement, Identifier<T> value) throws SQLException {
+        if (value.args.length != idFields.size()) {
             throw new IllegalArgumentException("Wrong identifier format "+value+" for table "+tableName);
         }
-        for (int i = 0; i < fields.size(); i++) {
-            var f = fields.get(i);
+        for (int i = 0; i < idFields.size(); i++) {
+            var f = idFields.get(i);
             var v = value.args[i];
             writeField(offset,  statement, f, v);
             offset += f.size();
         }
+        return offset;
     }
 
     public String schema() {
@@ -340,7 +343,7 @@ public final class Representation<T extends Model> {
         try (var result = executeQuery(
                 connection,
                 String.format(
-                        "SELECT (%s) FROM %s",
+                        "SELECT (%s) FROM %s;",
                         fields.stream()
                                 .flatMap(f -> f.columns(f.name).stream())
                                 .collect(Collectors.joining(", ")),
@@ -359,28 +362,83 @@ public final class Representation<T extends Model> {
         return find(connection, identifier).orElseThrow(() -> new NoSuchElementException("Element "+identifier+" does not exist in database!"));
     }
 
+    public void update(ModelConnection connection, T value) throws SQLException {
+        executeUpdate(
+            connection,
+            String.format(
+                "UPDATE %s SET %s WHERE %s;",
+                tableName,
+                fields.stream()
+                    .flatMap(f -> f.columns(f.name).stream())
+                    .map(f -> f + " = ?")
+                    .collect(Collectors.joining(", ")),
+                idFields.stream()
+                    .flatMap(f -> f.columns(f.name).stream())
+                    .map(f -> f + " = ?")
+                    .collect(Collectors.joining(" AND "))
+            ),
+            statement -> {
+                var offset = writeFull(1, statement, value);
+                writeIdentifier(offset, statement, new Identifier<>(value, this));
+            }
+        );
+    }
+
+    public void delete(ModelConnection connection, Identifier<T> identifier) throws SQLException {
+        executeUpdate(
+            connection,
+            String.format(
+                "DELETE FROM %s WHERE %s;",
+                tableName,
+                idFields.stream()
+                    .flatMap(f -> f.columns(f.name).stream())
+                    .map(f -> f + " = ?")
+                    .collect(Collectors.joining(" AND "))
+            ),
+            statement -> writeIdentifier(1, statement, identifier)
+        );
+    }
+
+    public void insert(ModelConnection connection, T value) throws SQLException {
+        executeUpdate(
+            connection,
+            String.format(
+                "INSERT INTO %s (%s) VALUES (%s);",
+                tableName,
+                fields.stream()
+                    .flatMap(f -> f.columns(f.name).stream())
+                    .collect(Collectors.joining(", ")),
+                fields.stream()
+                    .flatMap(f -> f.columns(f.name).stream())
+                    .map(f -> "?")
+                    .collect(Collectors.joining(", "))
+            ),
+            statement -> writeFull(1, statement, value)
+        );
+    }
+
     public Optional<T> find(ModelConnection connection, Identifier<T> identifier) throws SQLException {
         try (var result = executeQuery(
                 connection,
                 String.format(
-                        "SELECT (%s) FROM %s WHERE %s",
-                        idFields.stream()
+                        "SELECT %s FROM %s WHERE %s;",
+                        fields.stream()
                                 .flatMap(f -> f.columns(f.name).stream())
                                 .collect(Collectors.joining(", ")),
                         tableName,
                         idFields.stream()
                                 .flatMap(f -> f.columns(f.name).stream())
                                 .map(f -> f + " = ?")
-                                .collect(Collectors.joining(", "))
+                                .collect(Collectors.joining(" AND "))
                 ),
-                statement -> writeIdentifier(statement, identifier))) {
+                statement -> writeIdentifier(1, statement, identifier))) {
             if (!result.next()) {
                 return Optional.empty();
             }
             return Optional.of(read(result));
         }
     }
-    
+
     public static void migrate(ModelConnection connection, Migrations migrations, int targetVersion) throws SQLException {
         if (targetVersion > migrations.maxVersion() || targetVersion < 0) {
             throw new IllegalArgumentException("Invalid version "+targetVersion);
@@ -393,32 +451,32 @@ public final class Representation<T extends Model> {
                     """, _ -> {});
             var currentVersionResult = executeQuery(c, """
                     SELECT MAX(version) FROM migrations""", _ -> {});
-            var currentVersion = currentVersionResult.getInt(0);
+            var currentVersion = currentVersionResult.next() ? currentVersionResult.getInt(1) : 0;
             if (targetVersion < currentVersion) {
                 for (int i = currentVersion; i > targetVersion; i--) {
                     var migration = migrations.downgrades.get(i-1);
                     executeUpdate(c, migration, _ -> {});
                     final var v = i;
-                    executeUpdate(c, "DELETE FROM migrations WHERE version = ?;", p -> p.setInt(0, v));
+                    executeUpdate(c, "DELETE FROM migrations WHERE version = ?;", p -> p.setInt(1, v));
                 }
             } else if (targetVersion > currentVersion) {
                 for (int i = currentVersion + 1; i <= targetVersion; i++) {
                     var migration = migrations.upgrades.get(i-1);
                     executeUpdate(c, migration, _ -> {});
                     final var v = i;
-                    executeUpdate(c, "INSERT INTO migrations (version) VALUES (?);", p -> p.setInt(0, v));
+                    executeUpdate(c, "INSERT INTO migrations (version) VALUES (?);", p -> p.setInt(1, v));
                 }
             }
         });
     }
-    
+
     public static final class Builder<T extends Model> {
         private final Object schemaKey = new Object();
         private final List<Field<T, ?>> fields = new ArrayList<>();
         private final List<Field<T, ?>> idFields = new ArrayList<>();
-        
+
         private Builder() {}
-        
+
         public <F> OptionalField<T, F> optionalField(String name, DatabasePrimitiveType<F> primitiveType, Function<T, Optional<F>> encoder) {
             var field = new OptionalField<>(name, encoder, primitiveType, schemaKey);
             fields.add(field);
@@ -430,17 +488,17 @@ public final class Representation<T extends Model> {
             fields.add(field);
             return field;
         }
-        
+
         public <F extends Model> ReferenceField<T, F> referenceField(String name, Supplier<Representation<F>> reference, Function<T, Identifier<F>> encoder) {
             var field = new ReferenceField<>(name, encoder, reference, schemaKey);
             fields.add(field);
             return field;
         }
-        
+
         public void id(Field<T, ?> field) {
             idFields.add(field);
         }
-        
+
         public Representation<T> build(String tableName, SQLFunction<Result, T> reconstructor) {
             return new Representation<>(
                     tableName.toLowerCase(Locale.ROOT),

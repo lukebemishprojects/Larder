@@ -15,13 +15,13 @@ public class Schema {
             RepositoryIndex.REPRESENTATION,
             S3BackendConfiguration.REPRESENTATION
     );
-    
+
     static void main() {
         for (var repr : SCHEMA_REPRESENTATIONS) {
             System.out.println(repr.schema());
         }
     }
-    
+
     public static final Migrations MIGRATIONS = new Migrations.Builder()
             .upgrade(1, """
                     CREATE TABLE IF NOT EXISTS users (
@@ -29,7 +29,7 @@ public class Schema {
                         id uuid NOT NULL,
                         PRIMARY KEY (id)
                     );
-                    
+
                     CREATE TABLE IF NOT EXISTS usernamespaces (
                         id uuid NOT NULL,
                         namespace varchar NOT NULL,
@@ -37,13 +37,13 @@ public class Schema {
                         PRIMARY KEY (id, namespace),
                         FOREIGN KEY (id) REFERENCES users (id)
                     );
-                    
+
                     CREATE TABLE IF NOT EXISTS repositorybackends (
                         id uuid NOT NULL,
                         type smallint NOT NULL,
                         PRIMARY KEY (id)
                     );
-                    
+
                     CREATE TABLE IF NOT EXISTS s3backends (
                         id uuid NOT NULL,
                         region varchar NOT NULL,
@@ -53,7 +53,7 @@ public class Schema {
                         PRIMARY KEY (id),
                         FOREIGN KEY (id) REFERENCES repositorybackends (id)
                     );
-                    
+
                     CREATE TABLE IF NOT EXISTS repositories (
                         name varchar NOT NULL,
                         supportsmavendeploy boolean NOT NULL,
@@ -64,7 +64,7 @@ public class Schema {
                         PRIMARY KEY (name),
                         FOREIGN KEY (backend) REFERENCES repositorybackends (id)
                     );
-                    
+
                     CREATE TABLE IF NOT EXISTS repositoryindices (
                         repository varchar NOT NULL,
                         path varchar NOT NULL,
@@ -76,7 +76,7 @@ public class Schema {
                         PRIMARY KEY (repository, path, name),
                         FOREIGN KEY (repository) REFERENCES repositories (name)
                     );
-                    
+
                     CREATE TABLE IF NOT EXISTS s3backendconfigurations (
                         repository varchar NOT NULL,
                         backend uuid NOT NULL,
@@ -97,4 +97,6 @@ public class Schema {
                     DROP TABLE IF EXISTS s3backendconfigurations;
                     """)
             .build();
+
+    public static final int CURRENT_VERSION = 1;
 }
