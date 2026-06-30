@@ -30,7 +30,7 @@ import java.util.stream.Stream;
 
 public class Larder {
     private static final Logger LOGGER = LoggerFactory.getLogger(Larder.class);
-    private static final Key<ModelConnection> CONNECTION_KEY = new Key<>("orm model connection");
+    public static final Key<ModelConnection> CONNECTION_KEY = new Key<>("orm model connection");
 
     private record AuthInfo(String aud, String jwtCertLocation, String jwtHeader, String signOutUrl) {}
 
@@ -106,7 +106,14 @@ public class Larder {
             });
 
             // API methods
-            config.routes.get("/dashboard/api/whoami", ApiMethods::whoAmI);
+            config.routes.get("/dashboard/admin/api/listusers", ApiMethods::listUsers);
+            config.routes.get("/dashboard/admin/api/repositories", ApiMethods::listRepositories);
+            config.routes.get("/dashboard/admin/api/repositories/{repositoryName}", ApiMethods::getRepository);
+            config.routes.get("/dashboard/admin/api/backends", ApiMethods::listBackends);
+            config.routes.get("/dashboard/admin/api/backends/{id}", ApiMethods::getBackend);
+
+            config.routes.get("/dashboard/api/whoami", ctx -> ctx.json(ApiMethods.whoAmI(ctx)));
+            config.routes.get("/dashboard/api/namespaces/{user}/list", ApiMethods::listNamespaces);
 
             // Static files (dev + prod prefixes for indices styling and dashboard)
             config.staticFiles.add(staticFiles -> {

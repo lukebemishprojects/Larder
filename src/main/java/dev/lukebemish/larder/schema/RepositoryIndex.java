@@ -1,5 +1,6 @@
 package dev.lukebemish.larder.schema;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import dev.lukebemish.larder.orm.DatabasePrimitiveType;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.Model;
@@ -8,7 +9,15 @@ import dev.lukebemish.larder.orm.Representation;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
-public record RepositoryIndex(Identifier<Repository> repository, String path, String name, boolean isDirectory, Optional<LocalDateTime> lastModified, Optional<Long> size, long expires) implements Model {
+public record RepositoryIndex(
+    Identifier<Repository> repository,
+    String path,
+    String name,
+    @JsonProperty("isdirectory") boolean isDirectory,
+    @JsonProperty("lastmodified") Optional<LocalDateTime> lastModified,
+    Optional<Long> size,
+    long expires
+) implements Model {
     public static final Representation<RepositoryIndex> REPRESENTATION = Representation.build(it -> {
         var repository = it.referenceField("repository", () -> Repository.REPRESENTATION, RepositoryIndex::repository);
         var path = it.field("path", DatabasePrimitiveType.VARCHAR, RepositoryIndex::path);

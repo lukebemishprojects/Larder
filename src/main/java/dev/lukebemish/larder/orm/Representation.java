@@ -16,12 +16,13 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public final class Representation<T extends Model> {
-    private Representation(String tableName, List<Field<T, ?>> fields, SQLFunction<Result, T> reconstructor, List<Field<T, ?>> idFields, Object schemaKey) {
+    private Representation(String tableName, List<Field<T, ?>> fields, SQLFunction<Result, T> reconstructor, List<Field<T, ?>> idFields, Object schemaKey, List<Function<? extends Identifier.Template<T>, ?>> templateFunctions) {
         this.tableName = tableName;
         this.fields = fields;
         this.reconstructor = reconstructor;
         this.idFields = idFields;
         this.schemaKey = schemaKey;
+        this.templateFunctions = templateFunctions;
     }
 
     public static class Result {
@@ -41,6 +42,7 @@ public final class Representation<T extends Model> {
     private final SQLFunction<Result, T> reconstructor;
     final List<Field<T, ?>> idFields;
     private final Object schemaKey;
+    final List<Function<? extends Identifier.Template<T>, ?>> templateFunctions;
 
     public sealed abstract static class Field<T extends Model, F> {
         protected final String name;
@@ -143,7 +145,7 @@ public final class Representation<T extends Model> {
                 args.add(f.get(resultSet, startAt));
                 startAt += f.size();
             }
-            return new Identifier<>(args.toArray());
+            return new Identifier<>(args.toArray(), referenceRepresentation.get());
         }
 
         private List<Field<F, ?>> getIdFields() {
@@ -319,6 +321,16 @@ public final class Representation<T extends Model> {
         return offset;
     }
 
+    private <V extends Partial.Value<T, V>> int writePartial(int offset, PreparedStatement statement, Partial.Value<T, V> value) throws SQLException {
+        for (int i = 0; i < value.type().fields.size(); i++) {
+            var f = value.type().fields.get(i);
+            var v = value.type().valueGetters.get(i).apply(Partial.cast(value));
+            writeField(offset,  statement, f, v);
+            offset += f.size();
+        }
+        return offset;
+    }
+
     public String schema() {
         List<String> parts = new ArrayList<>();
         fields.stream()
@@ -343,13 +355,36 @@ public final class Representation<T extends Model> {
         try (var result = executeQuery(
                 connection,
                 String.format(
-                        "SELECT (%s) FROM %s;",
+                        "SELECT %s FROM %s;",
                         fields.stream()
                                 .flatMap(f -> f.columns(f.name).stream())
                                 .collect(Collectors.joining(", ")),
                         tableName
                 ),
                 _ -> {})) {
+            var models = new ArrayList<T>();
+            while (result.next()) {
+                models.add(read(result));
+            }
+            return models;
+        }
+    }
+
+    public <V extends Partial.Value<T, V>> List<T> select(ModelConnection connection, Partial.Value<T, V> value) throws SQLException {
+        try (var result = executeQuery(
+            connection,
+            String.format(
+                "SELECT %s FROM %s WHERE %s;",
+                fields.stream()
+                    .flatMap(f -> f.columns(f.name).stream())
+                    .collect(Collectors.joining(", ")),
+                tableName,
+                value.type().fields.stream()
+                    .flatMap(f -> f.columns(f.name).stream())
+                    .map(f -> f + " = ?")
+                    .collect(Collectors.joining(" AND "))
+            ),
+            statement -> writePartial(1, statement, value))) {
             var models = new ArrayList<T>();
             while (result.next()) {
                 models.add(read(result));
@@ -474,6 +509,7 @@ public final class Representation<T extends Model> {
         private final Object schemaKey = new Object();
         private final List<Field<T, ?>> fields = new ArrayList<>();
         private final List<Field<T, ?>> idFields = new ArrayList<>();
+        private final List<Function<? extends Identifier.Template<T>, ?>> templateFunctions = new ArrayList<>();
 
         private Builder() {}
 
@@ -496,7 +532,21 @@ public final class Representation<T extends Model> {
         }
 
         public void id(Field<T, ?> field) {
+            if (templateFunctions.size() != 0) {
+                throw new IllegalStateException("ID fields mut be all template or non-template");
+            }
             idFields.add(field);
+        }
+        public <P extends Identifier.Template<T>, F> void id(Field<T, F> field, Function<P, F> function) {
+            if (idFields.size() != templateFunctions.size()) {
+                throw new IllegalStateException("ID fields mut be all template or non-template");
+            }
+            idFields.add(field);
+            templateFunctions.add(function);
+        }
+
+        public <F, V extends Partial.Value<T, V>> void partial(Partial<T, V> partial, Field<T, F> field, Function<V, F> getter) {
+            partial.register(field, getter);
         }
 
         public Representation<T> build(String tableName, SQLFunction<Result, T> reconstructor) {
@@ -505,7 +555,9 @@ public final class Representation<T extends Model> {
                     fields,
                     reconstructor,
                     idFields,
-                    schemaKey);
+                    schemaKey,
+                    templateFunctions
+            );
         }
     }
 }

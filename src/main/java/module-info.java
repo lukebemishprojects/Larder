@@ -6,7 +6,7 @@ module dev.lukebemish.larder {
 
     requires static org.jspecify;
 
-    exports dev.lukebemish.larder.api to com.fasterxml.jackson.databind;
-    exports dev.lukebemish.larder.schema to com.fasterxml.jackson.databind;
-    exports dev.lukebemish.larder.orm to com.fasterxml.jackson.databind;
+    opens dev.lukebemish.larder.api to com.fasterxml.jackson.databind;
+    opens dev.lukebemish.larder.schema to com.fasterxml.jackson.databind;
+    opens dev.lukebemish.larder.orm to com.fasterxml.jackson.databind;
 }

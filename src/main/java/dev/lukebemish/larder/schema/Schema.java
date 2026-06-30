@@ -82,7 +82,7 @@ public class Schema {
                         backend uuid NOT NULL,
                         bucket varchar NOT NULL,
                         prefix varchar NOT NULL,
-                        PRIMARY KEY (backend),
+                        PRIMARY KEY (repository),
                         FOREIGN KEY (repository) REFERENCES repositories (name),
                         FOREIGN KEY (backend) REFERENCES s3backends (id)
                     );
