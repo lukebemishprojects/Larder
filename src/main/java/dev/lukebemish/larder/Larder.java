@@ -11,8 +11,9 @@ import io.javalin.config.Key;
 import io.javalin.http.Context;
 import io.javalin.http.HttpResponseException;
 import io.javalin.http.HttpStatus;
+import io.javalin.http.NotFoundResponse;
 import io.javalin.http.UnauthorizedResponse;
-import io.javalin.plugin.ContextPlugin;
+import io.javalin.http.staticfiles.Location;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,7 +59,6 @@ public class Larder {
 
             // General
             config.router.ignoreTrailingSlashes = true;
-            config.registerPlugin(new JwtPlugin());
 
             // Error handling
             config.routes.exception(UnauthorizedResponse.class, (e, ctx) -> {
@@ -74,56 +74,74 @@ public class Larder {
                 ctx.status(HttpStatus.INTERNAL_SERVER_ERROR.getCode());
                 ctx.json(new ApiError(
                     HttpStatus.INTERNAL_SERVER_ERROR.getMessage(),
-                    isDev ? Map.of(
+                    isDev ? (e.getMessage() != null ? Map.of(
                         "message", e.getMessage(),
                         "location", e.getStackTrace()[0].toString()
-                    ) : Map.of()
+                    ) : Map.of(
+                        "location", e.getStackTrace()[0].toString()
+                    )) : Map.of()
                 ));
             });
 
             // Dashboard auth
-            config.routes.before("dashboard/*", ctx -> {
-                ctx.with(JwtPlugin.class).authenticate(ctx, authInfo);
+            config.routes.before(ctx -> {
+                if (ctx.path().equals("/dashboard/logout") || ctx.path().equals("/dashboard/logout/")) {
+                    // Pass; no need to check auth if we're logging out
+                } else if (ctx.path().equals("/dashboard/admin") || ctx.path().startsWith("/dashboard/admin/")) {
+
+                    authenticate(ctx, adminAuthInfo);
+                } else if (ctx.path().equals("/dashboard") || ctx.path().startsWith("/dashboard/")) {
+                    authenticate(ctx, authInfo);
+                }
             });
-            config.routes.before("dashboard/admin/*", ctx -> {
-                ctx.with(JwtPlugin.class).authenticate(ctx, adminAuthInfo);
+
+            // Sign out
+            config.routes.get("/dashboard/logout/", ctx -> {
+                if (authInfo != null) {
+                    ctx.status(302);
+                    ctx.header("Location", authInfo.signOutUrl);
+                } else {
+                    throw new NotFoundResponse("Signing out doesn't make sense in dev!");
+                }
+            });
+
+            // API methods
+            config.routes.get("/dashboard/api/whoami", ApiMethods::whoAmI);
+
+            // Static files (dev + prod prefixes for indices styling and dashboard)
+            config.staticFiles.add(staticFiles -> {
+                staticFiles.hostedPath = "/dashboard";
+                staticFiles.location = Location.CLASSPATH;
+                staticFiles.directory = isDev ? "/dashboard" : "/dev/lukebemish/larder/dashboard";
+            });
+            config.staticFiles.add(staticFiles -> {
+                staticFiles.hostedPath = "/_internal";
+                staticFiles.location = Location.CLASSPATH;
+                staticFiles.directory = isDev ? "/indices/_internal" : "/dev/lukebemish/larder/indices/_internal";
             });
         }).start(8786);
 
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            app.stop();
-        }));
+        Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
     }
 
-    private final static class JwtPlugin extends ContextPlugin<JwtPlugin.Config, JwtPlugin.Extension> {
-        static class Config {}
-        static class Extension {
-            private @Nullable JwtIdentity identity;
+    public record JwtIdentity(User user, Set<Permission> permissions) {}
+    public static final String JWT_IDENTITY_KEY = "jwt_identity";
 
-            void authenticate(Context context, @Nullable AuthInfo authInfo) throws SQLException {
-                if (identity != null) {
-                    return;
-                }
-                var ext = context.with(JwtPlugin.class);
-                var connection = context.appData(CONNECTION_KEY);
-                if (authInfo == null) {
-                    identity = new JwtIdentity(
-                        ApiMethods.newUser(connection, new User(
-                            "xyz@example.org",
-                            Generators.nameBasedGenerator(ApiMethods.UUID_ISS).generate("xyz@example.org")
-                        )),
-                        Set.of(Permission.ALLOW_DASHBOARD, Permission.ALLOW_ADMIN_DASHBOARD)
-                    );
-                } else {
-                    throw new RuntimeException("Not yet implemented");
-                }
-            }
+    private void authenticate(Context context, @Nullable AuthInfo authInfo) throws SQLException {
+        if (context.attribute(JWT_IDENTITY_KEY) instanceof JwtIdentity) {
+            return;
         }
-        record JwtIdentity(User user, Set<Permission> permissions) {}
-
-        @Override
-        public Extension createExtension(Context context) {
-            return new Extension();
+        var connection = context.appData(CONNECTION_KEY);
+        if (authInfo == null) {
+            context.attribute(JWT_IDENTITY_KEY, new JwtIdentity(
+                ApiMethods.newUser(connection, new User(
+                    "xyz@example.org",
+                    Generators.nameBasedGenerator(ApiMethods.UUID_ISS).generate("xyz@example.org")
+                )),
+                Set.of(Permission.ALLOW_DASHBOARD, Permission.ALLOW_ADMIN_DASHBOARD)
+            ));
+        } else {
+            throw new RuntimeException("Not yet implemented");
         }
     }
 

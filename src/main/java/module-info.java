@@ -1,10 +1,12 @@
 module dev.lukebemish.larder {
+    requires java.sql;
     requires io.javalin;
     requires com.fasterxml.jackson.databind; // Set up JSON mapping
+    requires com.fasterxml.uuid; // UUID 5
 
     requires static org.jspecify;
-    requires java.sql;
-    requires com.fasterxml.uuid;
 
     exports dev.lukebemish.larder.api to com.fasterxml.jackson.databind;
+    exports dev.lukebemish.larder.schema to com.fasterxml.jackson.databind;
+    exports dev.lukebemish.larder.orm to com.fasterxml.jackson.databind;
 }
