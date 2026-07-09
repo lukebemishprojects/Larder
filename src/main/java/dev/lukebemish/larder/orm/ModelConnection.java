@@ -9,7 +9,10 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.ParameterizedType;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public class ModelConnection {
@@ -49,6 +52,13 @@ public class ModelConnection {
         }
     }
 
+    private final Map<Class<? extends Model>, Representation<?>> located = Collections.synchronizedMap(new IdentityHashMap<>());
+
+    @SuppressWarnings("unchecked")
+    private <T extends Model> Representation<T> locate(Class<T> clazz) {
+        return (Representation<T>) located.computeIfAbsent(clazz, k -> Representation.locate((Class<? extends Model>) k));
+    }
+
     @PolymorphicSignature("$select")
     public native <T extends Model, V extends Partial.Value<T, V>> List<T> select(Partial.Value<T, V> value) throws SQLException;
 
@@ -57,33 +67,24 @@ public class ModelConnection {
     }
 
     public <T extends Model> T select(Identifier<T> identifier) throws SQLException {
-        return Representation.locate(identifier.clazz).select(this, identifier);
+        return locate(identifier.clazz).select(this, identifier);
     }
 
-    @SuppressWarnings("unchecked")
-    public <T extends Model> void update(T value) throws SQLException {
-        // Cast is safe as model types must be final
-        Representation.locate((Class<T>) value.getClass()).update(this, value);
-    }
+    @PolymorphicSignature("$located")
+    public native  <T extends Model> void update(T value) throws SQLException;
 
-    @SuppressWarnings("unchecked")
-    public <T extends Model> void delete(T value) throws SQLException {
-        // Cast is safe as model types must be final
-        Representation.locate((Class<T>) value.getClass()).delete(this, value);
-    }
+    @PolymorphicSignature("$located")
+    public native  <T extends Model> void delete(T value) throws SQLException;
 
     public <T extends Model> void delete(Identifier<T> identifier) throws SQLException {
-        Representation.locate(identifier.clazz).delete(this, identifier);
+        locate(identifier.clazz).delete(this, identifier);
     }
 
-    @SuppressWarnings("unchecked")
-    public <T extends Model> void insert(T value) throws SQLException {
-        // Cast is safe as model types must be final
-        Representation.locate((Class<T>) value.getClass()).insert(this, value);
-    }
+    @PolymorphicSignature("$located")
+    public native  <T extends Model> void insert(T value) throws SQLException;
 
     public <T extends Model> Optional<T> find(Identifier<T> identifier) throws SQLException {
-        return Representation.locate(identifier.clazz).find(this, identifier);
+        return locate(identifier.clazz).find(this, identifier);
     }
 
     public void migrate(Migrations migrations, int targetVersion) throws SQLException {
@@ -92,6 +93,14 @@ public class ModelConnection {
 
     public void closeConnection() throws SQLException {
         this.connection.close();
+    }
+
+    @SuppressWarnings("unchecked")
+    public static CallSite $located(MethodHandles.Lookup lookup, String name, MethodType descriptor) throws NoSuchMethodException, IllegalAccessException {
+        Class<? extends Model> modelType = (Class<? extends Model>) descriptor.parameterType(1);
+        var handle = MethodHandles.lookup().unreflect(Representation.class.getDeclaredMethod(name, ModelConnection.class, Model.class));
+        var representation = Representation.locate(modelType);
+        return new ConstantCallSite(handle.bindTo(representation).asType(descriptor));
     }
 
     @SuppressWarnings("unchecked")

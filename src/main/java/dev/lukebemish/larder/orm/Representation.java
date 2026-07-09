@@ -591,31 +591,27 @@ public final class Representation<T extends Model> {
         }
     }
 
-    private static final Map<Class<?>, Representation<?>> LOCATED = Collections.synchronizedMap(new IdentityHashMap<>());
-
     @SuppressWarnings("unchecked")
-    static synchronized <T extends Model> Representation<T> locate(Class<T> clazz) {
-        return (Representation<T>) LOCATED.computeIfAbsent(clazz, _ -> {
-            java.lang.reflect.Field target = null;
-            for (var field : clazz.getFields()) {
-                if (Representation.class.isAssignableFrom(field.getType())) {
-                    if (field.getGenericType() instanceof ParameterizedType parameterizedType) {
-                        if (!parameterizedType.getActualTypeArguments()[0].equals(clazz)) {
-                            continue;
-                        }
+    static <T extends Model> Representation<T> locate(Class<T> clazz) {
+        java.lang.reflect.Field target = null;
+        for (var field : clazz.getFields()) {
+            if (Representation.class.isAssignableFrom(field.getType())) {
+                if (field.getGenericType() instanceof ParameterizedType parameterizedType) {
+                    if (!parameterizedType.getActualTypeArguments()[0].equals(clazz)) {
+                        continue;
                     }
-                    target = field;
-                    break;
                 }
+                target = field;
+                break;
             }
-            if (target == null) {
-                throw new IllegalArgumentException("Class " + clazz + " does not have a representation field");
-            }
-            try {
-                return (Representation<T>) target.get(null);
-            } catch (IllegalAccessException e) {
-                throw new RuntimeException(e);
-            }
-        });
+        }
+        if (target == null) {
+            throw new IllegalArgumentException("Class " + clazz + " does not have a representation field");
+        }
+        try {
+            return (Representation<T>) target.get(null);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
