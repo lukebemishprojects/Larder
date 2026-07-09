@@ -28,13 +28,13 @@ final class ApiMethods {
 
     public static User newUser(ModelConnection connection, User user) throws SQLException {
         return connection.transact(c -> {
-            var existing = User.REPRESENTATION.find(c, new Identifier<>(user, User.REPRESENTATION));
+            var existing = c.find(Identifier.of(user));
             if (existing.isEmpty()) {
-                User.REPRESENTATION.insert(c, user);
+                c.insert(user);
             } else {
-                User.REPRESENTATION.update(c, user);
+                c.update(user);
             }
-            return User.REPRESENTATION.select(c, new Identifier<>(user, User.REPRESENTATION));
+            return c.select(Identifier.of(user));
         });
     }
 
@@ -51,7 +51,7 @@ final class ApiMethods {
 
     public static void listUsers(Context context) throws SQLException {
         context.json(
-            new ListResponse<>(User.REPRESENTATION.select(context.appData(Larder.CONNECTION_KEY)))
+            new ListResponse<>(connection(context).select(User.REPRESENTATION))
         );
     }
 
@@ -68,23 +68,27 @@ final class ApiMethods {
             throw new UnauthorizedResponse();
         }
         context.json(
-            new ListResponse<>(UserNamespace.REPRESENTATION.select(
-                context.appData(Larder.CONNECTION_KEY),
-                new UserNamespace.ByUser(new User.Id(uuid).make(User.REPRESENTATION))
+            new ListResponse<>(connection(context).select(
+                new UserNamespace.ByUser(Identifier.of(new User.Id(uuid)))
             ))
         );
+    }
+
+    private static ModelConnection connection(Context context) {
+        return context.appData(Larder.CONNECTION_KEY);
     }
 
     public static void listRepositories(Context context) throws SQLException {
         if (!permissions(context).contains(Permission.ALLOW_DASHBOARD)) {
             throw new UnauthorizedResponse();
         }
-        var connection = context.appData(Larder.CONNECTION_KEY);
-        var out = new ArrayList<RepositoryUpdate>();
-        for (var repo : Repository.REPRESENTATION.select(connection)) {
-            out.add(RepositoryUpdate.from(repo, connection));
-        }
-        context.json(new ListResponse<>(out));
+        connection(context).transact(connection -> {
+            var out = new ArrayList<RepositoryUpdate>();
+            for (var repo : connection.select(Repository.REPRESENTATION)) {
+                out.add(RepositoryUpdate.from(repo, connection));
+            }
+            context.json(new ListResponse<>(out));
+        });
     }
 
     public static void getRepository(Context context) throws SQLException {
@@ -95,7 +99,7 @@ final class ApiMethods {
         if (!isValidRepositoryName(name)) {
             throw new BadRequestResponse("Invalid repository name:: "+name);
         }
-        var repo = Repository.REPRESENTATION.find(context.appData(Larder.CONNECTION_KEY), new Repository.Id(name).make(Repository.REPRESENTATION));
+        var repo = connection(context).find(Identifier.of(new Repository.Id(name)));
         if (repo.isEmpty()) {
             throw new NotFoundResponse("Repository not found");
         }
@@ -117,7 +121,7 @@ final class ApiMethods {
             throw new UnauthorizedResponse();
         }
         context.json(new ListResponse<>(
-            RepositoryBackend.REPRESENTATION.select(context.appData(Larder.CONNECTION_KEY))
+            connection(context).select(RepositoryBackend.REPRESENTATION)
         ));
     }
 
@@ -132,8 +136,8 @@ final class ApiMethods {
         } catch (IllegalArgumentException e) {
             throw new BadRequestResponse("Not a UUID: "+id);
         }
-        context.json(context.appData(Larder.CONNECTION_KEY).transact(connection -> {
-            var backend = RepositoryBackend.REPRESENTATION.find(connection, new RepositoryBackend.Id(backendId).make(RepositoryBackend.REPRESENTATION));
+        context.json(connection(context).transact(connection -> {
+            var backend = connection.find(Identifier.of(new RepositoryBackend.Id(backendId)));
 
             if (backend.isEmpty()) {
                 throw new NotFoundResponse("Backend not found");

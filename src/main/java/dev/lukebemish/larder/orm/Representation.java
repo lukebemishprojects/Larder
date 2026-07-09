@@ -1,9 +1,19 @@
 package dev.lukebemish.larder.orm;
 
+import dev.lukebemish.polymorphicsignatures.Bootstrap;
+import dev.lukebemish.polymorphicsignatures.PolymorphicSignature;
+
+import java.lang.invoke.CallSite;
+import java.lang.invoke.ConstantCallSite;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.lang.reflect.AccessFlag;
+import java.lang.reflect.ParameterizedType;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -16,13 +26,14 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public final class Representation<T extends Model> {
-    private Representation(String tableName, List<Field<T, ?>> fields, SQLFunction<Result, T> reconstructor, List<Field<T, ?>> idFields, Object schemaKey, List<Function<? extends Identifier.Template<T>, ?>> templateFunctions) {
+    private Representation(String tableName, List<Field<T, ?>> fields, SQLFunction<Result, T> reconstructor, List<Field<T, ?>> idFields, Object schemaKey, List<Function<? extends Identifier.Template<T>, ?>> templateFunctions, Class<T> clazz) {
         this.tableName = tableName;
         this.fields = fields;
         this.reconstructor = reconstructor;
         this.idFields = idFields;
         this.schemaKey = schemaKey;
         this.templateFunctions = templateFunctions;
+        this.clazz = clazz;
     }
 
     public static class Result {
@@ -43,6 +54,7 @@ public final class Representation<T extends Model> {
     final List<Field<T, ?>> idFields;
     private final Object schemaKey;
     final List<Function<? extends Identifier.Template<T>, ?>> templateFunctions;
+    final Class<T> clazz;
 
     public sealed abstract static class Field<T extends Model, F> {
         protected final String name;
@@ -78,12 +90,10 @@ public final class Representation<T extends Model> {
 
     public static final class ReferenceField<T extends Model, F extends Model> extends Field<T, Identifier<F>> {
         private final Supplier<Representation<F>> referenceRepresentation;
-        private final Object schemaKey;
 
         private ReferenceField(String name, Function<T, Identifier<F>> encoder, Supplier<Representation<F>> referenceRepresentation, Object schemaKey) {
             super(name, encoder, schemaKey);
             this.referenceRepresentation = referenceRepresentation;
-            this.schemaKey = schemaKey;
         }
 
         @Override
@@ -145,7 +155,7 @@ public final class Representation<T extends Model> {
                 args.add(f.get(resultSet, startAt));
                 startAt += f.size();
             }
-            return new Identifier<>(args.toArray(), referenceRepresentation.get());
+            return new Identifier<>(args.toArray(), referenceRepresentation.get(), referenceRepresentation.get().clazz);
         }
 
         private List<Field<F, ?>> getIdFields() {
@@ -351,7 +361,7 @@ public final class Representation<T extends Model> {
         );
     }
 
-    public List<T> select(ModelConnection connection) throws SQLException {
+    List<T> select(ModelConnection connection) throws SQLException {
         try (var result = executeQuery(
                 connection,
                 String.format(
@@ -370,7 +380,7 @@ public final class Representation<T extends Model> {
         }
     }
 
-    public <V extends Partial.Value<T, V>> List<T> select(ModelConnection connection, Partial.Value<T, V> value) throws SQLException {
+    <V extends Partial.Value<T, V>> List<T> select(ModelConnection connection, Partial.Value<T, V> value) throws SQLException {
         try (var result = executeQuery(
             connection,
             String.format(
@@ -393,11 +403,11 @@ public final class Representation<T extends Model> {
         }
     }
 
-    public T select(ModelConnection connection, Identifier<T> identifier) throws SQLException {
+    T select(ModelConnection connection, Identifier<T> identifier) throws SQLException {
         return find(connection, identifier).orElseThrow(() -> new NoSuchElementException("Element "+identifier+" does not exist in database!"));
     }
 
-    public void update(ModelConnection connection, T value) throws SQLException {
+    void update(ModelConnection connection, T value) throws SQLException {
         executeUpdate(
             connection,
             String.format(
@@ -414,12 +424,16 @@ public final class Representation<T extends Model> {
             ),
             statement -> {
                 var offset = writeFull(1, statement, value);
-                writeIdentifier(offset, statement, new Identifier<>(value, this));
+                writeIdentifier(offset, statement, Identifier.of(this, value));
             }
         );
     }
 
-    public void delete(ModelConnection connection, Identifier<T> identifier) throws SQLException {
+    void delete(ModelConnection connection, T value) throws SQLException {
+        delete(connection, Identifier.of(this, value));
+    }
+
+    void delete(ModelConnection connection, Identifier<T> identifier) throws SQLException {
         executeUpdate(
             connection,
             String.format(
@@ -434,7 +448,7 @@ public final class Representation<T extends Model> {
         );
     }
 
-    public void insert(ModelConnection connection, T value) throws SQLException {
+    void insert(ModelConnection connection, T value) throws SQLException {
         executeUpdate(
             connection,
             String.format(
@@ -452,7 +466,7 @@ public final class Representation<T extends Model> {
         );
     }
 
-    public Optional<T> find(ModelConnection connection, Identifier<T> identifier) throws SQLException {
+    Optional<T> find(ModelConnection connection, Identifier<T> identifier) throws SQLException {
         try (var result = executeQuery(
                 connection,
                 String.format(
@@ -474,7 +488,7 @@ public final class Representation<T extends Model> {
         }
     }
 
-    public static void migrate(ModelConnection connection, Migrations migrations, int targetVersion) throws SQLException {
+    static void migrate(ModelConnection connection, Migrations migrations, int targetVersion) throws SQLException {
         if (targetVersion > migrations.maxVersion() || targetVersion < 0) {
             throw new IllegalArgumentException("Invalid version "+targetVersion);
         }
@@ -549,15 +563,59 @@ public final class Representation<T extends Model> {
             partial.register(field, getter);
         }
 
-        public Representation<T> build(String tableName, SQLFunction<Result, T> reconstructor) {
+        @PolymorphicSignature("$build")
+        // Uses the caller model to build
+        public native Representation<T> build(String tableName, SQLFunction<Result, T> reconstructor);
+
+        public Representation<T> build(String tableName, SQLFunction<Result, T> reconstructor, Class<T> clazz) {
+            if (!clazz.accessFlags().contains(AccessFlag.FINAL)) {
+                throw new IllegalArgumentException("Representations may only be built for final model types!");
+            }
             return new Representation<>(
                     tableName.toLowerCase(Locale.ROOT),
                     fields,
                     reconstructor,
                     idFields,
                     schemaKey,
-                    templateFunctions
+                    templateFunctions,
+                    clazz
             );
         }
+
+        public static CallSite $build(MethodHandles.Lookup lookup, String name, MethodType descriptor, @Bootstrap.Caller Class<? extends Model> receiver) throws NoSuchMethodException, IllegalAccessException {
+            var handle = MethodHandles.lookup().findVirtual(Builder.class, "build", MethodType.methodType(Representation.class, String.class, SQLFunction.class, Class.class));
+            if (!Model.class.isAssignableFrom(receiver)) {
+                throw new IllegalArgumentException("This method uses the caller class to build a representation. It does not work outside of the appropriate Model class");
+            }
+            return new ConstantCallSite(MethodHandles.insertArguments(handle, 3, receiver).asType(descriptor));
+        }
+    }
+
+    private static final Map<Class<?>, Representation<?>> LOCATED = Collections.synchronizedMap(new IdentityHashMap<>());
+
+    @SuppressWarnings("unchecked")
+    static synchronized <T extends Model> Representation<T> locate(Class<T> clazz) {
+        return (Representation<T>) LOCATED.computeIfAbsent(clazz, _ -> {
+            java.lang.reflect.Field target = null;
+            for (var field : clazz.getFields()) {
+                if (Representation.class.isAssignableFrom(field.getType())) {
+                    if (field.getGenericType() instanceof ParameterizedType parameterizedType) {
+                        if (!parameterizedType.getActualTypeArguments()[0].equals(clazz)) {
+                            continue;
+                        }
+                    }
+                    target = field;
+                    break;
+                }
+            }
+            if (target == null) {
+                throw new IllegalArgumentException("Class " + clazz + " does not have a representation field");
+            }
+            try {
+                return (Representation<T>) target.get(null);
+            } catch (IllegalAccessException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 }

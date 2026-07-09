@@ -19,7 +19,7 @@ public record RepositoryBackendWithData(
     public static RepositoryBackendWithData from(RepositoryBackend backend, ModelConnection connection) throws SQLException {
         S3BackendData s3BackendData = null;
         if (backend.type() == RepositoryBackendType.S3) {
-            s3BackendData = S3BackendData.from(S3Backend.REPRESENTATION.select(connection, new S3Backend.Id(new Identifier<>(backend, RepositoryBackend.REPRESENTATION)).make(S3Backend.REPRESENTATION)));
+            s3BackendData = S3BackendData.from(connection.select(Identifier.of(new S3Backend.Id(Identifier.of(backend)))));
         }
         return new RepositoryBackendWithData(
             backend.id(),

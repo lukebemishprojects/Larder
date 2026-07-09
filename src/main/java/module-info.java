@@ -5,6 +5,7 @@ module dev.lukebemish.larder {
     requires com.fasterxml.uuid; // UUID 5
 
     requires static org.jspecify;
+    requires static dev.lukebemish.polymorphicsignatures;
 
     opens dev.lukebemish.larder.api to com.fasterxml.jackson.databind;
     opens dev.lukebemish.larder.schema to com.fasterxml.jackson.databind;

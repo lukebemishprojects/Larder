@@ -21,10 +21,10 @@ public record RepositoryUpdate(
     @JsonProperty("s3backend") @Nullable S3BackendConfigurationUpdate s3Backend
 ) {
     public static RepositoryUpdate from(Repository repository, ModelConnection connection) throws SQLException {
-        var backend = RepositoryBackend.REPRESENTATION.select(connection, repository.backend());
+        var backend = connection.select(repository.backend());
         S3BackendConfigurationUpdate s3Backend = null;
         if (backend.type() == RepositoryBackendType.S3) {
-            var configuration = S3BackendConfiguration.REPRESENTATION.select(connection, new S3BackendConfiguration.Id(new Identifier<>(repository, Repository.REPRESENTATION)).make(S3BackendConfiguration.REPRESENTATION));
+            var configuration = connection.select(Identifier.of(new S3BackendConfiguration.Id(Identifier.of(repository))));
             s3Backend = S3BackendConfigurationUpdate.from(configuration);
         }
         return new RepositoryUpdate(

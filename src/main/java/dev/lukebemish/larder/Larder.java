@@ -48,7 +48,7 @@ public class Larder {
     }
 
     private void start() throws SQLException {
-        Representation.migrate(this.modelConnection, Schema.MIGRATIONS, Schema.CURRENT_VERSION);
+        this.modelConnection.migrate(Schema.MIGRATIONS, Schema.CURRENT_VERSION);
 
         boolean isDev = authInfo == null;
 
