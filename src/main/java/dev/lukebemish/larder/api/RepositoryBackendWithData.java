@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.ModelConnection;
 import dev.lukebemish.larder.schema.RepositoryBackend;
-import dev.lukebemish.larder.schema.RepositoryBackendType;
 import dev.lukebemish.larder.schema.S3Backend;
 import org.jspecify.annotations.Nullable;
 

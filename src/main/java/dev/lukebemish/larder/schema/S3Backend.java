@@ -1,6 +1,5 @@
 package dev.lukebemish.larder.schema;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import dev.lukebemish.larder.orm.DatabasePrimitiveType;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.Model;
@@ -10,8 +9,8 @@ public record S3Backend(
     Identifier<RepositoryBackend> id,
     String region,
     String endpoint,
-    @JsonProperty("accesskeyid") String accessKeyId,
-    @JsonProperty("secretaccesskey") String secretAccessKey
+    String accessKeyId,
+    String secretAccessKey
 ) implements Model {
     public record Id(Identifier<RepositoryBackend> id) implements Identifier.Template<S3Backend> {}
 

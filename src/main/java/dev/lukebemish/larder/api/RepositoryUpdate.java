@@ -5,11 +5,11 @@ import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.ModelConnection;
 import dev.lukebemish.larder.schema.Repository;
 import dev.lukebemish.larder.schema.RepositoryBackend;
-import dev.lukebemish.larder.schema.RepositoryBackendType;
 import dev.lukebemish.larder.schema.S3BackendConfiguration;
 import org.jspecify.annotations.Nullable;
 
 import java.sql.SQLException;
+import java.util.UUID;
 
 public record RepositoryUpdate(
     String name,
@@ -17,7 +17,7 @@ public record RepositoryUpdate(
     @JsonProperty("supportspublishportal") boolean supportsPublishPortal,
     @JsonProperty("expirationdays") int expirationDays,
     boolean mutable,
-    Identifier<RepositoryBackend> backend,
+    UUID backend,
     @JsonProperty("s3backend") @Nullable S3BackendConfigurationUpdate s3Backend
 ) {
     public static RepositoryUpdate from(Repository repository, ModelConnection connection) throws SQLException {
@@ -33,7 +33,7 @@ public record RepositoryUpdate(
             repository.supportsPublishPortal(),
             repository.expirationDays(),
             repository.mutable(),
-            repository.backend(),
+            Identifier.<RepositoryBackend, RepositoryBackend.Id>template(repository.backend()).id(),
             s3Backend
         );
     }

@@ -1,33 +1,35 @@
 package dev.lukebemish.larder.orm;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.JsonSerializer;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import dev.lukebemish.polymorphicsignatures.PolymorphicSignature;
 
-import java.io.IOException;
 import java.lang.invoke.CallSite;
 import java.lang.invoke.ConstantCallSite;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.function.Function;
+import java.util.stream.IntStream;
 
-@JsonSerialize(using = Identifier.IdentifierSerializer.class)
 public final class Identifier<T extends Model> {
     final Object[] args;
-    private final Representation<T> representation;
     final Class<T> clazz;
 
-    Identifier(Object[] args, Representation<T> representation, Class<T> clazz) {
+    Identifier(Object[] args, Class<T> clazz) {
         this.args = args;
-        this.representation = representation;
         this.clazz = clazz;
     }
 
     public interface Template<T extends Model> {}
+
+    @PolymorphicSignature("$template")
+    public native static <T extends Model, S extends Template<T>> S template(Identifier<T> identifier);
+
+    @PolymorphicSignature("$template")
+    public native static <T extends Model, S extends Template<T>> S template(T value);
 
     @SuppressWarnings("unchecked")
     static <T extends Model, S extends Template<T>> S cast(Template<T> value) {
@@ -57,7 +59,7 @@ public final class Identifier<T extends Model> {
         for (var f : idFields) {
             args.add(f.encoder.apply(value));
         }
-        return new Identifier<>(args.toArray(), representation, clazz);
+        return new Identifier<>(args.toArray(), clazz);
     }
 
     private static <T extends Model, P extends Template<T>> Identifier<T> ofImpl(Representation<T> representation, Class<T> clazz, P template) {
@@ -66,7 +68,7 @@ public final class Identifier<T extends Model> {
             var getter = representation.templateFunctions.get(i);
             args[i] = getter.apply(cast(template));
         }
-        return new Identifier<>(args, representation, clazz);
+        return new Identifier<>(args, clazz);
     }
 
     public static CallSite $of(MethodHandles.Lookup lookup, String name, MethodType descriptor) throws NoSuchMethodException, IllegalAccessException {
@@ -102,17 +104,61 @@ public final class Identifier<T extends Model> {
         return new ConstantCallSite(MethodHandles.insertArguments(handle, 0, representation, modelType).asType(descriptor));
     }
 
-    final static class IdentifierSerializer extends JsonSerializer<Identifier<?>> {
-        @Override
-        public void serialize(Identifier<?> value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
-            if (value.args.length == 1) {
-                serializers.defaultSerializeValue(value.args[0], gen);
-            } else {
-                for (int i = 0; i < value.args.length; i++) {
-                    var field = value.representation.idFields.get(i).name;
-                    serializers.defaultSerializeField(field, value.args[i], gen);
-                }
-            }
+    public static CallSite $template(MethodHandles.Lookup lookup, String name, MethodType descriptor) throws NoSuchMethodException, IllegalAccessException {
+        var paramType = descriptor.parameterType(0);
+        var returnTypeTemplateImpl = descriptor.returnType();
+
+        if (!returnTypeTemplateImpl.isRecord()) {
+            throw new IllegalArgumentException("Identifier.template only works with record template types with constructors taking their ID arguments in order");
         }
+
+        Class<? extends Model> modelType;
+        boolean fromIdentifier;
+        if (Model.class.isAssignableFrom(paramType)) {
+            fromIdentifier = false;
+            //noinspection unchecked
+            modelType = (Class<? extends Model>) paramType;
+
+            var representation = Representation.locate(modelType);
+            var applyHandle = MethodHandles.lookup().findVirtual(Function.class, "apply", MethodType.methodType(Object.class, Object.class));
+            var encodeHandles = representation.idFields.stream().map(it -> applyHandle.bindTo(it.encoder)).toArray(MethodHandle[]::new); // Model -> Field
+
+            return fieldsToTemplateConstruction(lookup, descriptor, paramType, returnTypeTemplateImpl, encodeHandles);
+
+        } else if (Identifier.class.isAssignableFrom(paramType)) {
+            var encodeHandles = IntStream.range(0, returnTypeTemplateImpl.getRecordComponents().length)
+                .mapToObj(idx -> {
+                    try {
+                        // Identifier -> Object[]
+                        var getArgs = MethodHandles.lookup().findGetter(Identifier.class, "args", Object[].class);
+                        // Object[], int -> Object
+                        var arrayElementGetter = MethodHandles.arrayElementGetter(Object[].class);
+                        // Object[] -> Object
+                        var thisElement = MethodHandles.insertArguments(arrayElementGetter, 1, idx);
+                        // Identifier -> Object
+                        return MethodHandles.filterArguments(thisElement, 0, getArgs);
+                    } catch (NoSuchFieldException | IllegalAccessException e) {
+                        throw new RuntimeException(e);
+                    }
+                }).toArray(MethodHandle[]::new);
+
+            return fieldsToTemplateConstruction(lookup, descriptor, paramType, returnTypeTemplateImpl, encodeHandles);
+        } else {
+            throw new IllegalArgumentException("Cannot handle descriptor "+descriptor);
+        }
+    }
+
+    private static CallSite fieldsToTemplateConstruction(MethodHandles.Lookup lookup, MethodType descriptor, Class<?> paramType, Class<?> returnTypeTemplateImpl, MethodHandle[] encodeHandles) throws NoSuchMethodException, IllegalAccessException {
+        var ctor = lookup.findConstructor(returnTypeTemplateImpl, MethodType.methodType(
+            returnTypeTemplateImpl,
+            Arrays.stream(returnTypeTemplateImpl.getRecordComponents()).map(RecordComponent::getType).toArray(Class[]::new)
+        ));
+
+        var handle = MethodHandles.filterArguments(ctor, 0, encodeHandles); // Model, Model, Model, ... -> Template
+        for (int i = 1; i < encodeHandles.length; i++) {
+            handle = MethodHandles.foldArguments(handle, MethodHandles.identity(paramType));
+        }
+
+        return new ConstantCallSite(handle.asType(descriptor));
     }
 }

@@ -76,6 +76,9 @@ public class ModelConnection {
     @PolymorphicSignature("$located")
     public native  <T extends Model> void delete(T value) throws SQLException;
 
+    @PolymorphicSignature("$delete")
+    public native <T extends Model, V extends Partial.Value<T, V>> void delete(Partial.Value<T, V> value) throws SQLException;
+
     public <T extends Model> void delete(Identifier<T> identifier) throws SQLException {
         locate(identifier.clazz).delete(this, identifier);
     }
@@ -103,10 +106,22 @@ public class ModelConnection {
         return new ConstantCallSite(handle.bindTo(representation).asType(descriptor));
     }
 
-    @SuppressWarnings("unchecked")
     public static CallSite $select(MethodHandles.Lookup lookup, String name, MethodType descriptor) throws NoSuchMethodException, IllegalAccessException {
         var partialValueType = descriptor.parameterType(1);
         var handle = MethodHandles.lookup().findVirtual(Representation.class, "select", MethodType.methodType(List.class, ModelConnection.class, Partial.Value.class));
+        Class<? extends Model> foundModelType = findModelType(partialValueType);
+        return new ConstantCallSite(handle.bindTo(Representation.locate(foundModelType)).asType(descriptor));
+    }
+
+    public static CallSite $delete(MethodHandles.Lookup lookup, String name, MethodType descriptor) throws NoSuchMethodException, IllegalAccessException {
+        var partialValueType = descriptor.parameterType(1);
+        var handle = MethodHandles.lookup().findVirtual(Representation.class, "delete", MethodType.methodType(void.class, ModelConnection.class, Partial.Value.class));
+        Class<? extends Model> foundModelType = findModelType(partialValueType);
+        return new ConstantCallSite(handle.bindTo(Representation.locate(foundModelType)).asType(descriptor));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Class<? extends Model> findModelType(Class<?> partialValueType) {
         Class<? extends Model> foundModelType = null;
         for (var inter : partialValueType.getGenericInterfaces()) {
             if (inter instanceof ParameterizedType parameterizedType) {
@@ -119,8 +134,8 @@ public class ModelConnection {
             }
         }
         if (foundModelType == null) {
-            throw new IllegalArgumentException("Partial value type "+partialValueType+" does not directly implement Partial.Value, or cannot infer model type from partial value type parameter");
+            throw new IllegalArgumentException("Partial value type "+ partialValueType +" does not directly implement Partial.Value, or cannot infer model type from partial value type parameter");
         }
-        return new ConstantCallSite(handle.bindTo(Representation.locate(foundModelType)).asType(descriptor));
+        return foundModelType;
     }
 }

@@ -13,7 +13,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -155,7 +154,7 @@ public final class Representation<T extends Model> {
                 args.add(f.get(resultSet, startAt));
                 startAt += f.size();
             }
-            return new Identifier<>(args.toArray(), referenceRepresentation.get(), referenceRepresentation.get().clazz);
+            return new Identifier<>(args.toArray(), referenceRepresentation.get().clazz);
         }
 
         private List<Field<F, ?>> getIdFields() {
@@ -445,6 +444,21 @@ public final class Representation<T extends Model> {
                     .collect(Collectors.joining(" AND "))
             ),
             statement -> writeIdentifier(1, statement, identifier)
+        );
+    }
+
+    <V extends Partial.Value<T, V>> void delete(ModelConnection connection, Partial.Value<T, V> value) throws SQLException {
+        executeUpdate(
+            connection,
+            String.format(
+                "DELETE FROM %s WHERE %s;",
+                tableName,
+                value.type().fields.stream()
+                    .flatMap(f -> f.columns(f.name).stream())
+                    .map(f -> f + " = ?")
+                    .collect(Collectors.joining(" AND "))
+            ),
+            statement -> writePartial(1, statement, value)
         );
     }
 

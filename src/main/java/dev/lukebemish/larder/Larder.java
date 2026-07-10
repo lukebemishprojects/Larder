@@ -2,8 +2,8 @@ package dev.lukebemish.larder;
 
 import com.fasterxml.uuid.Generators;
 import dev.lukebemish.larder.api.ApiError;
+import dev.lukebemish.larder.api.UserApi;
 import dev.lukebemish.larder.orm.ModelConnection;
-import dev.lukebemish.larder.orm.Representation;
 import dev.lukebemish.larder.schema.Schema;
 import dev.lukebemish.larder.schema.User;
 import io.javalin.Javalin;
@@ -88,7 +88,6 @@ public class Larder {
                 if (ctx.path().equals("/dashboard/logout") || ctx.path().equals("/dashboard/logout/")) {
                     // Pass; no need to check auth if we're logging out
                 } else if (ctx.path().equals("/dashboard/admin") || ctx.path().startsWith("/dashboard/admin/")) {
-
                     authenticate(ctx, adminAuthInfo);
                 } else if (ctx.path().equals("/dashboard") || ctx.path().startsWith("/dashboard/")) {
                     authenticate(ctx, authInfo);
@@ -112,7 +111,7 @@ public class Larder {
             config.routes.get("/dashboard/admin/api/backends", ApiMethods::listBackends);
             config.routes.get("/dashboard/admin/api/backends/{id}", ApiMethods::getBackend);
 
-            config.routes.get("/dashboard/api/whoami", ctx -> ctx.json(ApiMethods.whoAmI(ctx)));
+            config.routes.get("/dashboard/api/whoami", ctx -> ctx.json(UserApi.from(ApiMethods.whoAmI(ctx))));
             config.routes.get("/dashboard/api/namespaces/{user}/list", ApiMethods::listNamespaces);
 
             // Static files (dev + prod prefixes for indices styling and dashboard)
@@ -126,6 +125,9 @@ public class Larder {
                 staticFiles.location = Location.CLASSPATH;
                 staticFiles.directory = isDev ? "/indices/_internal" : "/dev/lukebemish/larder/indices/_internal";
             });
+
+            config.routes.delete("/dashboard/admin/api/repositories/{repositoryName}", ApiMethods::removeRepository);
+            config.routes.delete("/dashboard/admin/api/backends/{id}", ApiMethods::removeBackend);
         }).start(8786);
 
         Runtime.getRuntime().addShutdownHook(new Thread(app::stop));

@@ -8,6 +8,4 @@ module dev.lukebemish.larder {
     requires static dev.lukebemish.polymorphicsignatures;
 
     opens dev.lukebemish.larder.api to com.fasterxml.jackson.databind;
-    opens dev.lukebemish.larder.schema to com.fasterxml.jackson.databind;
-    opens dev.lukebemish.larder.orm to com.fasterxml.jackson.databind;
 }

@@ -1,4 +1,4 @@
-package dev.lukebemish.larder.schema;
+package dev.lukebemish.larder.api;
 
 public enum RepositoryBackendType {
     S3

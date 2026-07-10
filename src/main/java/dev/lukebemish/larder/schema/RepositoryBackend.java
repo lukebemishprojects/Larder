@@ -1,5 +1,6 @@
 package dev.lukebemish.larder.schema;
 
+import dev.lukebemish.larder.api.RepositoryBackendType;
 import dev.lukebemish.larder.orm.DatabasePrimitiveType;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.Model;
