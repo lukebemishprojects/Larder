@@ -7,5 +7,12 @@ module dev.lukebemish.larder {
     requires static org.jspecify;
     requires static dev.lukebemish.polymorphicsignatures;
 
+    requires javalin.openapi.plugin;
+    requires javalin.swagger.plugin;
+    requires javalin.redoc.plugin;
+    requires openapi.generator;
+    requires openapi.specification;
+    requires annotations;
+
     opens dev.lukebemish.larder.api to com.fasterxml.jackson.databind;
 }

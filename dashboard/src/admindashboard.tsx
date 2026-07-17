@@ -30,9 +30,7 @@ function NamespaceCreation(props: { user: string, mutate: Setter<api.Namespaces 
                     setStatus({ status: "working" });
                     setToCreate("");
                     props.mutate((namespaces) => {
-                        return namespaces === undefined ? undefined : {
-                            values: [...namespaces.values, { namespace: namespaceName, confirmed: true }]
-                        };
+                        return namespaces === undefined ? undefined : [...namespaces, { namespace: namespaceName, confirmed: true }];
                     });
                     try {
                         await api.postURL(`/dashboard/admin/api/namespaces/${props.user}/create/${namespaceName}`)
@@ -65,7 +63,7 @@ function NamespaceList(props: { user: string }) {
             </InnerElement>
         }}>
             <Show when={namespaces()}>
-                <InnerHoverElements basis={namespaces()!.values} foreach={(namespace) => {
+                <InnerHoverElements basis={namespaces()!} foreach={(namespace) => {
                     return <ErrorBoundary fallback={(error) => {
                         console.log(error);
                         return <div class="text-red-600">
@@ -80,9 +78,7 @@ function NamespaceList(props: { user: string }) {
                                 value: "Delete",
                                 action: async () => {
                                     mutate((namespaces) => {
-                                        return namespaces === undefined ? undefined : {
-                                            values: namespaces.values.filter((n) => n.namespace != namespace.namespace)
-                                        };
+                                        return namespaces === undefined ? undefined : namespaces.filter((n) => n.namespace != namespace.namespace);
                                     });
                                     try {
                                         await api.postURL(`/dashboard/admin/api/namespaces/${props.user}/delete/${namespace.namespace}`)
@@ -97,15 +93,13 @@ function NamespaceList(props: { user: string }) {
                                 value: "Confirm",
                                 action: async () => {
                                     mutate((namespaces) => {
-                                        return namespaces === undefined ? undefined : {
-                                            values: namespaces.values.map((n) => {
+                                        return namespaces === undefined ? undefined : namespaces.map((n) => {
                                                 if (n.namespace == namespace.namespace) {
                                                     return { namespace: n.namespace, confirmed: true };
                                                 } else {
                                                     return n;
                                                 }
-                                            })
-                                        };
+                                            });
                                     });
                                     try {
                                         await api.postURL(`/dashboard/admin/api/namespaces/${props.user}/confirm/${namespace.namespace}`)
@@ -130,7 +124,7 @@ function NamespaceList(props: { user: string }) {
 
 function AdminUsers() {
     const [users] = createResource(async () => {
-        return await api.fetchJSON('/dashboard/admin/api/listusers', api.Users);
+        return await api.fetchJSON('/dashboard/admin/api/users', api.Users);
     })
     return (
         <ErrorBoundary fallback={(error) => {
@@ -142,7 +136,7 @@ function AdminUsers() {
             </OuterBox>)
         }}>
             <Show when={users()}>
-                <For each={users()!.values}>
+                <For each={users()!}>
                     {(user) => <BoxWithHeader>
                         <div class="flex flex-row items-center gap-5">
                             <div class="">{user.email}</div>
@@ -168,7 +162,7 @@ const BackendsAvailable = createContext<BackendsAvailable>();
 function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, value: api.Repository }) {
     const context = useContext(BackendsAvailable)!;
 
-    const [ backendType, setBackendType ] = createSignal<api.BackendConfiguration["type"] | undefined>(context.backends.values.find((b) => b.id == props.value.backend)?.type);
+    const [ backendType, setBackendType ] = createSignal<api.BackendConfiguration["type"] | undefined>(context.backends.find((b) => b.id == props.value.backend)?.type);
     createEffect(() => {
         if (backendType() == "s3backend") {
             if (props.value.s3backend === undefined) {
@@ -216,7 +210,7 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                     min: "1"
                 }} />
             </Show>
-            <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={context.backends.values.map((backend) => {
+            <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={context.backends.map((backend) => {
                 return {
                     value: <div class="flex flex-row gap-2.5 w-full items-center">
                         <div>{api.backendTypePrettyName(backend.type)}</div>
@@ -230,7 +224,7 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                 }
             })}>
                 {props.value.backend ? (() => {
-                    const matching = context.backends.values.find((b) => b.id == props.value.backend)!
+                    const matching = context.backends.find((b) => b.id == props.value.backend)!
                     return <div class="flex flex-row gap-2.5 w-full items-center">
                         <div>{api.backendTypePrettyName(matching.type)}</div>
                         <div class="flex-1"></div>
@@ -359,16 +353,14 @@ function RepositoriesList() {
                         return;
                     }
 
-                    if (repositories()?.values.find((r) => r.name == current.name) !== undefined) {
+                    if (repositories()?.find((r) => r.name == current.name) !== undefined) {
                         setStatus({ status: "error", err: "A repository with that name already exists!" });
                         return;
                     }
                     setToCreate(api.newRepository());
                     setStatus({ status: "working" });
                     mutate((repositories) => {
-                        return repositories === undefined ? undefined : {
-                            values: [...repositories.values, current]
-                        };
+                        return repositories === undefined ? undefined : [...repositories, current];
                     })
 
                     try {
@@ -388,7 +380,7 @@ function RepositoriesList() {
                 </BoxInside>
             </OuterBox>
             <Show when={repositories()}>
-                <For each={repositories()!.values}>
+                <For each={repositories()!}>
                     {(repository) => <SingleRepository mutate={mutate} refetch={refetch} repository={repository} />}
                 </For>
             </Show>
@@ -592,7 +584,7 @@ function BackendsList() {
             </BoxInside>
         </OuterBox>
         <Show when={backends()}>
-            <For each={backends()!.values}>
+            <For each={backends()!}>
                 {(backend) => <SingleBackend mutate={mutate} refetch={refetch} backend={backend} />}
             </For>
         </Show>

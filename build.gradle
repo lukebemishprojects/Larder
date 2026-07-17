@@ -2,6 +2,7 @@ plugins {
     id 'java'
     // TODO: centralize
     id 'dev.lukebemish.javac-post-processor' version '0.1.10'
+    id 'org.javamodularity.moduleplugin' version '2.0.0'
 }
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(25)
@@ -55,6 +56,9 @@ abstract class TestDev extends DefaultTask {
     abstract JavaToolchainService getToolchains()
 
     @InputFiles
+    abstract ConfigurableFileCollection getModulepath()
+
+    @InputFiles
     abstract ConfigurableFileCollection getClasspath()
 
     @Input
@@ -80,7 +84,8 @@ abstract class TestDev extends DefaultTask {
             }
             try {
                 execOperations.javaexec {
-                    classpath = this.classpath
+                    jvmArgs('--module-path', this.modulepath.asPath)
+                    classpath(this.classpath)
                     mainModule = "dev.lukebemish.larder"
                     executable = javaLauncher.get().executablePath
                     environment(
@@ -111,7 +116,7 @@ abstract class TestDev extends DefaultTask {
 }
 
 tasks.register("testDev", TestDev) {
-    classpath.from(sourceSets.main.runtimeClasspath)
+    modulepath.from(sourceSets.main.runtimeClasspath)
     classpath.from("build/devResources")
 }
 
@@ -128,6 +133,10 @@ dependencies {
     compileOnly("org.jspecify:jspecify:1.0.0")
 
     implementation("io.javalin:javalin:7.2.2")
+    annotationProcessor("io.javalin.community.openapi:openapi-annotation-processor:7.2.2")
+    implementation("io.javalin.community.openapi:javalin-openapi-plugin:7.2.2")
+    implementation("io.javalin.community.openapi:javalin-swagger-plugin:7.2.2")
+    implementation("io.javalin.community.openapi:javalin-redoc-plugin:7.2.2")
     implementation("org.postgresql:postgresql:42.7.11")
     implementation("org.slf4j:slf4j-simple:2.0.16")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.21.2")

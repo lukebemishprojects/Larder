@@ -7,6 +7,7 @@ import dev.lukebemish.larder.orm.ModelConnection;
 import dev.lukebemish.larder.schema.Schema;
 import dev.lukebemish.larder.schema.User;
 import io.javalin.Javalin;
+import io.javalin.apibuilder.ApiBuilder;
 import io.javalin.config.Key;
 import io.javalin.http.Context;
 import io.javalin.http.HttpResponseException;
@@ -14,6 +15,9 @@ import io.javalin.http.HttpStatus;
 import io.javalin.http.NotFoundResponse;
 import io.javalin.http.UnauthorizedResponse;
 import io.javalin.http.staticfiles.Location;
+import io.javalin.openapi.plugin.OpenApiPlugin;
+import io.javalin.openapi.plugin.redoc.ReDocPlugin;
+import io.javalin.openapi.plugin.swagger.SwaggerPlugin;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,26 +26,28 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Stream;
+
+import static io.javalin.apibuilder.ApiBuilder.delete;
+import static io.javalin.apibuilder.ApiBuilder.get;
+import static io.javalin.apibuilder.ApiBuilder.path;
 
 public class Larder {
     private static final Logger LOGGER = LoggerFactory.getLogger(Larder.class);
     public static final Key<ModelConnection> CONNECTION_KEY = new Key<>("orm model connection");
+    public static final Key<Larder> APPLICATION_KEY = new Key<>("application context");
 
-    private record AuthInfo(String aud, String jwtCertLocation, String jwtHeader, String signOutUrl) {}
-
-    private final @Nullable AuthInfo authInfo;
-    private final @Nullable AuthInfo adminAuthInfo;
-
+    private final boolean isDev;
     private final ModelConnection modelConnection;
 
-    private Larder(@Nullable AuthInfo authInfo, @Nullable AuthInfo adminAuthInfo, ModelConnection modelConnection) throws SQLException {
-        this.authInfo = authInfo;
-        this.adminAuthInfo = adminAuthInfo;
+    private Larder(boolean isDev, ModelConnection modelConnection) throws SQLException {
+        this.isDev = isDev;
         this.modelConnection = modelConnection;
 
         start();
@@ -50,12 +56,13 @@ public class Larder {
     private void start() throws SQLException {
         this.modelConnection.migrate(Schema.MIGRATIONS, Schema.CURRENT_VERSION);
 
-        boolean isDev = authInfo == null;
-
         var app = Javalin.create(config -> {
             // Database
             config.events.serverStopping(this.modelConnection::closeConnection);
             config.appData(CONNECTION_KEY, this.modelConnection);
+            config.appData(APPLICATION_KEY, this);
+
+            config.validation.register(UUID.class, UUID::fromString);
 
             // General
             config.router.ignoreTrailingSlashes = true;
@@ -83,75 +90,92 @@ public class Larder {
                 ));
             });
 
-            // Dashboard auth
-            config.routes.before(ctx -> {
-                if (ctx.path().equals("/dashboard/logout") || ctx.path().equals("/dashboard/logout/")) {
-                    // Pass; no need to check auth if we're logging out
-                } else if (ctx.path().equals("/dashboard/admin") || ctx.path().startsWith("/dashboard/admin/")) {
-                    authenticate(ctx, adminAuthInfo);
-                } else if (ctx.path().equals("/dashboard") || ctx.path().startsWith("/dashboard/")) {
-                    authenticate(ctx, authInfo);
-                }
-            });
+            config.registerPlugin(new OpenApiPlugin(pluginConfig -> {
+                pluginConfig.withDefinitionConfiguration((version, definition) -> {
+                    definition.info(info -> info.title("Larder API"));
+                });
+            }));
+            config.registerPlugin(new SwaggerPlugin());
+            config.registerPlugin(new ReDocPlugin());
 
-            // Sign out
-            config.routes.get("/dashboard/logout/", ctx -> {
-                if (authInfo != null) {
-                    ctx.status(302);
-                    ctx.header("Location", authInfo.signOutUrl);
-                } else {
-                    throw new NotFoundResponse("Signing out doesn't make sense in dev!");
-                }
-            });
+            // Role auth
+            config.routes.beforeMatched(this::authenticate);
+
+            // TODO: Sign out
 
             // API methods
-            config.routes.get("/dashboard/admin/api/listusers", ApiMethods::listUsers);
-            config.routes.get("/dashboard/admin/api/repositories", ApiMethods::listRepositories);
-            config.routes.get("/dashboard/admin/api/repositories/{repositoryName}", ApiMethods::getRepository);
-            config.routes.get("/dashboard/admin/api/backends", ApiMethods::listBackends);
-            config.routes.get("/dashboard/admin/api/backends/{id}", ApiMethods::getBackend);
+            config.routes.apiBuilder(() -> {
+                path("/dashboard", List.of(Role.Builtin.USER), () -> {
+                    path("admin", List.of(Role.Builtin.ADMIN), () -> {
+                        path("api", () -> {
+                            get("users", ApiMethods::listUsers);
+                            get("repositories", ApiMethods::listRepositories);
+                            get("repositories/{repositoryName}", ApiMethods::getRepository);
+                            get("backends", ApiMethods::listBackends);
+                            get("backends/{id}", ApiMethods::getBackend);
 
-            config.routes.get("/dashboard/api/whoami", ctx -> ctx.json(UserApi.from(ApiMethods.whoAmI(ctx))));
-            config.routes.get("/dashboard/api/namespaces/{user}/list", ApiMethods::listNamespaces);
+                            delete("repositories/{repositoryName}", ApiMethods::removeRepository);
+                            delete("backends/{id}", ApiMethods::removeBackend);
+                        });
+                    });
+                    path("api", () -> {
+                        get("whoami", ctx -> ctx.json(UserApi.from(ApiMethods.whoAmI(ctx))));
+                        get("whatcanido", ApiMethods::whatCanIDo);
+                        get("namespaces/{user}/list", ApiMethods::listNamespaces);
+                    });
+                });
+            });
 
             // Static files (dev + prod prefixes for indices styling and dashboard)
             config.staticFiles.add(staticFiles -> {
                 staticFiles.hostedPath = "/dashboard";
                 staticFiles.location = Location.CLASSPATH;
                 staticFiles.directory = isDev ? "/dashboard" : "/dev/lukebemish/larder/dashboard";
+                staticFiles.roles = Set.of(Role.Builtin.USER);
             });
             config.staticFiles.add(staticFiles -> {
                 staticFiles.hostedPath = "/_internal";
                 staticFiles.location = Location.CLASSPATH;
                 staticFiles.directory = isDev ? "/indices/_internal" : "/dev/lukebemish/larder/indices/_internal";
+                staticFiles.roles = Set.of();
             });
-
-            config.routes.delete("/dashboard/admin/api/repositories/{repositoryName}", ApiMethods::removeRepository);
-            config.routes.delete("/dashboard/admin/api/backends/{id}", ApiMethods::removeBackend);
         }).start(8786);
 
         Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
     }
 
-    public record JwtIdentity(User user, Set<Permission> permissions) {}
-    public static final String JWT_IDENTITY_KEY = "jwt_identity";
+    public record AuthInfo(@Nullable User user, Set<Role> roles) {}
+    public static final String AUTH_INFO_KEY = "auth_info";
 
-    private void authenticate(Context context, @Nullable AuthInfo authInfo) throws SQLException {
-        if (context.attribute(JWT_IDENTITY_KEY) instanceof JwtIdentity) {
-            return;
+    static Set<Role> userRoles(Context context) throws SQLException {
+        var app = context.appData(APPLICATION_KEY);
+        if (context.attribute(AUTH_INFO_KEY) instanceof AuthInfo authInfo) {
+            return authInfo.roles;
         }
-        var connection = context.appData(CONNECTION_KEY);
-        if (authInfo == null) {
-            context.attribute(JWT_IDENTITY_KEY, new JwtIdentity(
+        if (app.isDev) {
+            var connection = context.appData(CONNECTION_KEY);
+            var authInfo = new AuthInfo(
                 ApiMethods.newUser(connection, new User(
                     "xyz@example.org",
+                    // UUID is always kept the same so dev has a stable user
                     Generators.nameBasedGenerator(ApiMethods.UUID_ISS).generate("xyz@example.org")
                 )),
-                Set.of(Permission.ALLOW_DASHBOARD, Permission.ALLOW_ADMIN_DASHBOARD)
-            ));
-        } else {
-            throw new RuntimeException("Not yet implemented");
+                Set.of(Role.Builtin.ADMIN, Role.Builtin.USER)
+            );
+            context.attribute(AUTH_INFO_KEY, authInfo);
+            return authInfo.roles;
         }
+        // TODO: implement
+        return Set.of();
+    }
+
+    private void authenticate(Context context) throws SQLException {
+        var requiredRoles = context.routeRoles();
+        var userRoles = userRoles(context);
+        if (userRoles.containsAll(requiredRoles)) {
+            return; // User has all required roles to access
+        }
+        throw new UnauthorizedResponse();
     }
 
     static void main(String[] args) {
@@ -159,17 +183,11 @@ public class Larder {
         if (appEnv == null) {
             appEnv = "prod";
         }
-        var dashboardAud = System.getenv("LARDER_JWT_AUD");
-        var adminDashboardAud = System.getenv("LARDER_ADMIN_JWT_AUD");
-        var jwtCertLocation = System.getenv("LARDER_JWT_CERT_LOCATION");
-        var jwtHeader = System.getenv("LARDER_JWT_HEADER");
         var signOutUrl = System.getenv("LARDER_SIGNOUT_URL");
 
         var isDev = appEnv.equals("dev");
 
-        if (!isDev && Stream.of(
-            dashboardAud, adminDashboardAud, jwtCertLocation, jwtHeader, signOutUrl
-        ).anyMatch(Objects::isNull)) {
+        if (!isDev && Stream.of(signOutUrl).anyMatch(Objects::isNull)) {
             throw new RuntimeException("In production, JWT header validation must be set up for the dashboard and admin dashboard to determine identity!");
         }
 
@@ -190,8 +208,7 @@ public class Larder {
 
         try {
             new Larder(
-                isDev ? null : new AuthInfo(dashboardAud, jwtCertLocation, jwtHeader, signOutUrl),
-                isDev ? null : new AuthInfo(adminDashboardAud, jwtCertLocation, jwtHeader, signOutUrl),
+                isDev,
                 new ModelConnection(DriverManager.getConnection(dbUrl, dbProps))
             );
         } catch (SQLException e) {

@@ -6,7 +6,7 @@ export function nullishOptional<R>(schema: z.ZodType<R>): z.ZodOptional<z.ZodTyp
     return schema.nullish().transform( x => x ?? undefined ).optional();
 }
 
-export async function fetchJSON<S extends z.ZodObject>(url: string, schema: S): Promise<z.infer<S>> {
+export async function fetchJSON<S extends z.ZodType>(url: string, schema: S): Promise<z.infer<S>> {
     const response = await fetch(url).then((response) => {
         if (!response.ok) {
             throw new Error(`Status ${response.status}, ${response.statusText}`);
@@ -54,16 +54,17 @@ export const User = z.object({
 export type User = z.infer<typeof User>;
 
 export const ListResponse = function <T>(itemSchema: z.ZodType<T>) {
-    return z.object({
-        values: z.array(itemSchema)
-    });
+    return z.array(itemSchema);
 };
-export type ListResponse<T> = {
-    values: T[];
-};
+export type ListResponse<T> = T[];
 
 export const Users = ListResponse(User);
 export type Users = ListResponse<User>;
+
+export const UserCapability = z.enum(["dashboard", "admindashboard"])
+export type UserCapability = z.infer<typeof UserCapability>;
+export const UserCapabilities = ListResponse(UserCapability);
+export type UserCapabilities = ListResponse<UserCapability>;
 
 export const Namespace = z.object({
     namespace: z.string(),
