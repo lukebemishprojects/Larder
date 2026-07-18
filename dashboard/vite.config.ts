@@ -18,7 +18,6 @@ export default defineConfig({
         rollupOptions: {
             input: {
                 dashboard: resolve(__dirname, 'index.html'),
-                admindashboard: resolve(__dirname, 'admin/index.html'),
             },
         },
     },

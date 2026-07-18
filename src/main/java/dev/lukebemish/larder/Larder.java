@@ -37,6 +37,7 @@ import java.util.stream.Stream;
 import static io.javalin.apibuilder.ApiBuilder.delete;
 import static io.javalin.apibuilder.ApiBuilder.get;
 import static io.javalin.apibuilder.ApiBuilder.path;
+import static io.javalin.apibuilder.ApiBuilder.post;
 
 public class Larder {
     private static final Logger LOGGER = LoggerFactory.getLogger(Larder.class);
@@ -116,12 +117,22 @@ public class Larder {
 
                             delete("repositories/{repositoryName}", ApiMethods::removeRepository);
                             delete("backends/{id}", ApiMethods::removeBackend);
+
+                            post("namespaces/{user}/create/{namespace}", ApiMethods::addNamespace);
+                            post("namespaces/{user}/confirm/{namespace}", ApiMethods::confirmNamespace);
+                            post("namespaces/{user}/delete/{namespace}", ApiMethods::removeNamespace);
+
+                            post("repositories/{repositoryName}", ApiMethods::updateRepository);
+                            post("backends/{id}", ApiMethods::updateBackend);
+                            post("backends", ApiMethods::createBackend);
                         });
                     });
                     path("api", () -> {
                         get("whoami", ctx -> ctx.json(UserApi.from(ApiMethods.whoAmI(ctx))));
                         get("whatcanido", ApiMethods::whatCanIDo);
                         get("namespaces/{user}/list", ApiMethods::listNamespaces);
+
+                        post("namespaces/{user}/request/{namespace}", ApiMethods::requestNamespace);
                     });
                 });
             });

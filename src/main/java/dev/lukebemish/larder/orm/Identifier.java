@@ -11,6 +11,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 
@@ -150,15 +151,40 @@ public final class Identifier<T extends Model> {
 
     private static CallSite fieldsToTemplateConstruction(MethodHandles.Lookup lookup, MethodType descriptor, Class<?> paramType, Class<?> returnTypeTemplateImpl, MethodHandle[] encodeHandles) throws NoSuchMethodException, IllegalAccessException {
         var ctor = lookup.findConstructor(returnTypeTemplateImpl, MethodType.methodType(
-            returnTypeTemplateImpl,
+            void.class,
             Arrays.stream(returnTypeTemplateImpl.getRecordComponents()).map(RecordComponent::getType).toArray(Class[]::new)
         ));
 
-        var handle = MethodHandles.filterArguments(ctor, 0, encodeHandles); // Model, Model, Model, ... -> Template
+        var filteredEncodeHandles = new MethodHandle[encodeHandles.length];
+        for (int i = 0; i < encodeHandles.length; i++) {
+            var componentType = ctor.type().parameterType(i);
+            filteredEncodeHandles[i] = encodeHandles[i].asType(MethodType.methodType(componentType, encodeHandles[i].type().parameterArray()));
+        }
+
+        var handle = MethodHandles.filterArguments(ctor, 0, filteredEncodeHandles); // Model, Model, Model, ... -> Template
         for (int i = 1; i < encodeHandles.length; i++) {
             handle = MethodHandles.foldArguments(handle, MethodHandles.identity(paramType));
         }
 
         return new ConstantCallSite(handle.asType(descriptor));
+    }
+
+    @Override
+    public boolean equals(Object object) {
+        if (!(object instanceof Identifier<?> that)) return false;
+        return Objects.deepEquals(args, that.args) && Objects.equals(clazz, that.clazz);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(Arrays.hashCode(args), clazz);
+    }
+
+    @Override
+    public String toString() {
+        return "Identifier{" +
+            "args=" + Arrays.toString(args) +
+            ", clazz=" + clazz +
+            '}';
     }
 }
