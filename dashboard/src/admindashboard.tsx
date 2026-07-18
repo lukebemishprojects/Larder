@@ -1,18 +1,12 @@
-/* @refresh reload */
-import { render } from 'solid-js/web';
 import 'solid-devtools';
-
-import { App, AppExternalEntry, AppInternalEntry } from './App';
 
 import './app.css';
 import * as api from './api';
-import { createContext, createEffect, createResource, createSignal, ErrorBoundary, For, Setter, Show, Signal, useContext } from 'solid-js';
+import { createContext, createEffect, createResource, createSignal, ErrorBoundary, For, Setter, Show, Accessor, useContext } from 'solid-js';
 import { BoxInside, BoxWithHeader, Button, InnerElement, InnerHoverElements, OuterBox, TextInput, TextInputGroup } from './boxes';
 import { Dropdown } from './Dropdown';
 import { orErrorSignal, OrError } from './utils';
 import { createStore, SetStoreFunction, unwrap } from 'solid-js/store';
-
-const root = document.getElementById('root');
 
 function NamespaceCreation(props: { user: string, mutate: Setter<api.Namespaces | undefined>, refetch: () => Promise<unknown> | unknown }) {
     const [status, setStatus] = orErrorSignal();
@@ -30,9 +24,7 @@ function NamespaceCreation(props: { user: string, mutate: Setter<api.Namespaces 
                     setStatus({ status: "working" });
                     setToCreate("");
                     props.mutate((namespaces) => {
-                        return namespaces === undefined ? undefined : {
-                            values: [...namespaces.values, { namespace: namespaceName, confirmed: true }]
-                        };
+                        return namespaces === undefined ? undefined : [...namespaces, { namespace: namespaceName, confirmed: true }];
                     });
                     try {
                         await api.postURL(`/dashboard/admin/api/namespaces/${props.user}/create/${namespaceName}`)
@@ -57,7 +49,7 @@ function NamespaceList(props: { user: string }) {
     });
     return (
         <ErrorBoundary fallback={(error) => {
-            console.log(error);
+            console.error(error);
             return <InnerElement>
                 <div class="text-red-600">
                     Error: {error.message}
@@ -65,9 +57,9 @@ function NamespaceList(props: { user: string }) {
             </InnerElement>
         }}>
             <Show when={namespaces()}>
-                <InnerHoverElements basis={namespaces()!.values} foreach={(namespace) => {
+                <InnerHoverElements basis={namespaces()!} foreach={(namespace) => {
                     return <ErrorBoundary fallback={(error) => {
-                        console.log(error);
+                        console.error(error);
                         return <div class="text-red-600">
                             Error: {error.message}
                         </div>
@@ -80,9 +72,7 @@ function NamespaceList(props: { user: string }) {
                                 value: "Delete",
                                 action: async () => {
                                     mutate((namespaces) => {
-                                        return namespaces === undefined ? undefined : {
-                                            values: namespaces.values.filter((n) => n.namespace != namespace.namespace)
-                                        };
+                                        return namespaces === undefined ? undefined : namespaces.filter((n) => n.namespace != namespace.namespace);
                                     });
                                     try {
                                         await api.postURL(`/dashboard/admin/api/namespaces/${props.user}/delete/${namespace.namespace}`)
@@ -97,15 +87,13 @@ function NamespaceList(props: { user: string }) {
                                 value: "Confirm",
                                 action: async () => {
                                     mutate((namespaces) => {
-                                        return namespaces === undefined ? undefined : {
-                                            values: namespaces.values.map((n) => {
+                                        return namespaces === undefined ? undefined : namespaces.map((n) => {
                                                 if (n.namespace == namespace.namespace) {
                                                     return { namespace: n.namespace, confirmed: true };
                                                 } else {
                                                     return n;
                                                 }
-                                            })
-                                        };
+                                            });
                                     });
                                     try {
                                         await api.postURL(`/dashboard/admin/api/namespaces/${props.user}/confirm/${namespace.namespace}`)
@@ -128,13 +116,13 @@ function NamespaceList(props: { user: string }) {
     )
 }
 
-function AdminUsers() {
+export function AdminUsers() {
     const [users] = createResource(async () => {
-        return await api.fetchJSON('/dashboard/admin/api/listusers', api.Users);
+        return await api.fetchJSON('/dashboard/admin/api/users', api.Users);
     })
     return (
         <ErrorBoundary fallback={(error) => {
-            console.log(error);
+            console.error(error);
             return (<OuterBox>
                 <div class="text-red-600 p-5">
                     Error: {error.message}
@@ -142,7 +130,7 @@ function AdminUsers() {
             </OuterBox>)
         }}>
             <Show when={users()}>
-                <For each={users()!.values}>
+                <For each={users()!}>
                     {(user) => <BoxWithHeader>
                         <div class="flex flex-row items-center gap-5">
                             <div class="">{user.email}</div>
@@ -165,19 +153,8 @@ interface BackendsAvailable {
 }
 const BackendsAvailable = createContext<BackendsAvailable>();
 
-function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, value: api.Repository }) {
+function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, value: api.Repository, s3set: SetStoreFunction<api.S3BackendConfiguration>, s3value: api.S3BackendConfiguration, backendType: Accessor<api.BackendConfiguration["type"] | undefined>, setBackendType: Setter<api.BackendConfiguration["type"] | undefined> }) {
     const context = useContext(BackendsAvailable)!;
-
-    const [ backendType, setBackendType ] = createSignal<api.BackendConfiguration["type"] | undefined>(context.backends.values.find((b) => b.id == props.value.backend)?.type);
-    createEffect(() => {
-        if (backendType() == "s3backend") {
-            if (props.value.s3backend === undefined) {
-                props.set("s3backend", api.newS3BackendConfiguration());
-            }
-        } else {
-            props.set("s3backend", undefined);
-        }
-    });
 
     return (
         <div class="block flex flex-col gap-2">
@@ -216,7 +193,7 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                     min: "1"
                 }} />
             </Show>
-            <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={context.backends.values.map((backend) => {
+            <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={context.backends.map((backend) => {
                 return {
                     value: <div class="flex flex-row gap-2.5 w-full items-center">
                         <div>{api.backendTypePrettyName(backend.type)}</div>
@@ -224,13 +201,13 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                         <div class="font-mono text-xs text-slate-600">{backend.id}</div>
                     </div>,
                     action: async () => {
-                        setBackendType(backend.type);
+                        props.setBackendType(backend.type);
                         props.set("backend", backend.id);
                     }
                 }
             })}>
                 {props.value.backend ? (() => {
-                    const matching = context.backends.values.find((b) => b.id == props.value.backend)!
+                    const matching = context.backends.find((b) => b.id == props.value.backend)!
                     return <div class="flex flex-row gap-2.5 w-full items-center">
                         <div>{api.backendTypePrettyName(matching.type)}</div>
                         <div class="flex-1"></div>
@@ -241,22 +218,40 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                     <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
                 </svg>
             </Dropdown>
-            <Show when={backendType() == "s3backend" && props.value.s3backend}>
-                <TextInput type="text" placeholder="S3 bucket" value={props.value.s3backend!.bucket} onchange={(v) => {props.set("s3backend", "bucket", v)}} />
-                <TextInput type="text" placeholder="Prefix in bucket" value={props.value.s3backend!.prefix} onchange={(v) => {props.set("s3backend", "prefix", v)}} />
+            <Show when={props.backendType() == "s3backend"}>
+                <TextInput type="text" placeholder="S3 bucket" value={props.s3value.bucket} onchange={(v) => {props.s3set("bucket", v)}} />
+                <TextInput type="text" placeholder="Prefix in bucket" value={props.s3value.prefix} onchange={(v) => {props.s3set("prefix", v)}} />
             </Show>
         </div>
     );
 }
 
 function SingleRepository(props: { repository: api.Repository, mutate: Setter<api.Repositories | undefined>, refetch: () => Promise<unknown> | unknown }) {
-    const [ toSet, setToSet ] = createStore({ ...props.repository });
+    const context = useContext(BackendsAvailable)!;
+
+    const [ toSet, setToSet ] = createStore({
+        ...props.repository,
+        s3backend: undefined
+    });
+    const [ backendType, setBackendType ] = createSignal<api.BackendConfiguration["type"] | undefined>(context.backends.find((b) => b.id == props.repository.backend)?.type);
+    const [ toSetS3, setToSetS3 ] = createStore(props.repository.s3backend ? { ...props.repository.s3backend! } : api.newS3BackendConfiguration());
     const [ isDeleting, setIsDeleting ] = createSignal(false);
     const isDirty = () => {
         let key: keyof api.Repository;
         for (key in props.repository) {
+            if (key == "s3backend") {
+                continue;
+            }
             if (toSet[key] != props.repository[key]) {
                 return true;
+            }
+        }
+        if (backendType() == "s3backend") {
+            let s3key: keyof api.S3BackendConfiguration;
+            for (s3key in props.repository.s3backend!) {
+                if (toSetS3[s3key] != props.repository.s3backend![s3key]) {
+                    return true;
+                }
             }
         }
         return false;
@@ -269,12 +264,15 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
         </div>
         <>
             <InnerElement>
-                <RepositorySettings value={toSet} set={setToSet} />
+                <RepositorySettings value={toSet} set={setToSet} s3value={toSetS3} s3set={setToSetS3} backendType={backendType} setBackendType={setBackendType} />
             </InnerElement>
             <InnerElement>
                 <div class="flex flex-row gap-2.5 w-full items-center">
                     <Button disabled={!isDirty()} onclick={async () => {
-                        const current = { ...unwrap(toSet) }
+                        const current = { ...unwrap(toSet), s3backend: undefined }
+                        if (backendType() === "s3backend") {
+                            current.s3backend = { ...unwrap(toSetS3) }
+                        }
                         if (!api.validateRepository(current, setStatus)) {
                             return;
                         }
@@ -296,7 +294,14 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
                             setIsDeleting(false);
                         }
                         if (isDirty()) {
-                            setToSet({ ...props.repository });
+                            setToSet({
+                                ...props.repository,
+                                s3backend: undefined
+                            });
+                            setToSetS3(props.repository.s3backend ? {
+                                ...props.repository.s3backend!
+                            } : api.newS3BackendConfiguration());
+                            setBackendType(context.backends.find((b) => b.id == props.repository.backend)?.type);
                         }
                     }} disabled={!isDirty() && !isDeleting()}>
                         Cancel
@@ -331,17 +336,19 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
     </BoxWithHeader>
 }
 
-function RepositoriesList() {
+export function RepositoriesList() {
     const [repositories, { mutate, refetch }] = createResource(async () => {
         return await api.fetchJSON('/dashboard/admin/api/repositories', api.Repositories);
     })
     const [ toCreate, setToCreate ] = createStore(api.newRepository());
+    const [ backendType, setBackendType ] = createSignal<api.BackendConfiguration["type"] | undefined>(undefined);
+    const [ toCreateS3, setToCreateS3 ] = createStore(api.newS3BackendConfiguration());
     const [ status, setStatus ] = orErrorSignal();
     const [ backends ] = createResource(async () => {
         return await api.fetchJSON('/dashboard/admin/api/backends', api.Backends);
     })
     return (<ErrorBoundary fallback={(error) => {
-        console.log(error);
+        console.error(error);
         return (<OuterBox>
             <div class="text-red-600 p-5">
                 Error: {error.message}
@@ -353,22 +360,24 @@ function RepositoriesList() {
                 <div class="shadow-sm"><TextInputGroup type="text" accessor={() => toCreate.name} setter={(value: string) => {
                     setToCreate("name", value);
                 }} placeholder="Create repository" submit="Create" onsubmit={async () => {
-                    const current = { ...unwrap(toCreate) }
+                    const current: api.Repository = { ...unwrap(toCreate), s3backend: undefined }
+                    if (backendType() == "s3backend") {
+                        current.s3backend = { ...unwrap(toCreateS3) };
+                    }
 
                     if (!api.validateRepository(current, setStatus)) {
                         return;
                     }
 
-                    if (repositories()?.values.find((r) => r.name == current.name) !== undefined) {
+                    if (repositories()?.find((r) => r.name == current.name) !== undefined) {
                         setStatus({ status: "error", err: "A repository with that name already exists!" });
                         return;
                     }
                     setToCreate(api.newRepository());
+                    setToCreateS3(api.newS3BackendConfiguration());
                     setStatus({ status: "working" });
                     mutate((repositories) => {
-                        return repositories === undefined ? undefined : {
-                            values: [...repositories.values, current]
-                        };
+                        return repositories === undefined ? undefined : [...repositories, current];
                     })
 
                     try {
@@ -382,13 +391,13 @@ function RepositoriesList() {
                 }} /></div>
                 <BoxInside>
                     <InnerElement>
-                        <RepositorySettings value={toCreate} set={setToCreate} />
+                        <RepositorySettings value={toCreate} set={setToCreate} s3value={toCreateS3} s3set={setToCreateS3} backendType={backendType} setBackendType={setBackendType} />
                         <OrError get={status} />
                     </InnerElement>
                 </BoxInside>
             </OuterBox>
             <Show when={repositories()}>
-                <For each={repositories()!.values}>
+                <For each={repositories()!}>
                     {(repository) => <SingleRepository mutate={mutate} refetch={refetch} repository={repository} />}
                 </For>
             </Show>
@@ -396,7 +405,7 @@ function RepositoriesList() {
     </ErrorBoundary>)
 }
 
-function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: SetStoreFunction<api.BackendConfiguration> }) {
+function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: SetStoreFunction<api.BackendConfiguration>, toSetS3: api.S3Backend, setToSetS3: SetStoreFunction<api.S3Backend> }) {
     createEffect(() => {
         if (props.toSet.type == "s3backend") {
             if (props.toSet.s3backend === undefined) {
@@ -411,14 +420,14 @@ function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: Set
         <div class="block flex flex-col gap-2">
             <Show when={props.toSet.type == "s3backend"}>
                 <div class="block flex flex-col gap-2">
-                    <TextInput type="text" placeholder="Region" value={props.toSet.s3backend!.region} onchange={(v) => {props.setToSet("s3backend", "region", v)}} />
-                    <TextInput type="text" placeholder="Endpoint" value={props.toSet.s3backend!.endpoint} onchange={(v) => {props.setToSet("s3backend", "endpoint", v)}} />
-                    <TextInput type="text" placeholder="Access Key ID" value={props.toSet.s3backend!.accesskeyid} onchange={(v) => {props.setToSet("s3backend", "accesskeyid", v)}} />
-                    <TextInput type="text" placeholder="Secret Access Key" value={props.toSet.s3backend!.secretaccesskey ?? ""} onchange={(v) => {
+                    <TextInput type="text" placeholder="Region" value={props.toSetS3.region} onchange={(v) => {props.setToSetS3("region", v)}} />
+                    <TextInput type="text" placeholder="Endpoint" value={props.toSetS3.endpoint} onchange={(v) => {props.setToSetS3("endpoint", v)}} />
+                    <TextInput type="text" placeholder="Access Key ID" value={props.toSetS3.accesskeyid} onchange={(v) => {props.setToSetS3("accesskeyid", v)}} />
+                    <TextInput type="text" placeholder="Secret Access Key" value={props.toSetS3.secretaccesskey ?? ""} onchange={(v) => {
                         if (v.length > 0) {
-                            props.setToSet("s3backend", "secretaccesskey", v);
+                            props.setToSetS3("secretaccesskey", v);
                         } else {
-                            props.setToSet("s3backend", "secretaccesskey", undefined);
+                            props.setToSetS3("secretaccesskey", undefined);
                         }
                     }} />
                 </div>
@@ -434,7 +443,7 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
     const [ status, setStatus ] = orErrorSignal();
     const [ isDeleting, setIsDeleting ] = createSignal(false);
     return <ErrorBoundary fallback={(error) => {
-        console.log(error);
+        console.error(error);
         return (<OuterBox>
             <div class="text-red-600 p-5">
                 Error: {error.message}
@@ -443,7 +452,11 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
     }}>
         <Show when={backendConfiguration()}>
             {(item) => {
-                const [ toSet, setToSet ] = createStore<api.BackendConfiguration>({ ...item() });
+                const [ toSet, setToSet ] = createStore<api.BackendConfiguration>({
+                    s3backend: undefined,
+                    ...item()
+                });
+                const [ toSetS3, setToSetS3 ] = createStore<api.S3Backend>(item().s3backend ? { ...item().s3backend! } : api.newS3Backend());
                 const isDirty = () => {
                     if (item().type != toSet.type) {
                         return true;
@@ -455,7 +468,7 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                     if (type == "s3backend") {
                         let key: keyof api.S3Backend;
                         for (key in item().s3backend) {
-                            if (toSet.s3backend![key] != item().s3backend![key]) {
+                            if (toSetS3[key] != item().s3backend![key]) {
                                 return true;
                             }
                         }
@@ -470,13 +483,17 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                     </div>
                     <>
                         <InnerElement>
-                            <BackendContents toSet={toSet} setToSet={setToSet} />
+                            <BackendContents toSet={toSet} setToSet={setToSet} toSetS3={toSetS3} setToSetS3={setToSetS3} />
                         </InnerElement>
                         <InnerElement>
                             <div class="flex flex-row gap-2.5 w-full items-center">
                                 <Button disabled={!isDirty()} onclick={async () => {
                                     setStatus({ status: "working" });
                                     const current = { ...unwrap(toSet) }
+                                    if (current.type == "s3backend") {
+                                        current.s3backend = { ...unwrap(toSetS3) };
+                                        setToSetS3("secretaccesskey", undefined);
+                                    }
                                     try {
                                         await api.postJSON(`/dashboard/admin/api/backends/${props.backend.id}`, current);
                                         setStatus({ status: "ok" });
@@ -535,17 +552,18 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
     </ErrorBoundary>;
 }
 
-function BackendsList() {
+export function BackendsList() {
     const [ backends, { mutate, refetch }] = createResource(async () => {
         return await api.fetchJSON('/dashboard/admin/api/backends', api.Backends);
     })
     const [ toCreate, setToCreate ] = createStore(api.newBackendConfiguration());
+    const [ toCreateS3, setToCreateS3 ] = createStore<api.S3Backend>(api.newS3Backend());
     const [ status, setStatus ] = orErrorSignal();
 
     const possibleTypes: api.BackendConfiguration["type"][] = api.BackendConfiguration.shape.type.options;
 
     return (<ErrorBoundary fallback={(error) => {
-        console.log(error);
+        console.error(error);
         return (<OuterBox>
             <div class="text-red-600 p-5">
                 Error: {error.message}
@@ -568,7 +586,11 @@ function BackendsList() {
                 </Dropdown>
                 <button class="border-l-0 font-semibold bg-white rounded-md text-sm border-1 py-2.5 px-3 block cursor-pointer bg-slate-150 hover:bg-slate-200 rounded-l-none" onclick={async () => {
                     const current = { ...unwrap(toCreate) }
+                    if (current.type == "s3backend") {
+                        current.s3backend = { ...unwrap(toCreateS3) };
+                    }
                     setToCreate(api.newBackendConfiguration());
+                    setToCreateS3(api.newS3Backend());
                     setStatus({ status: "working" });
                     try {
                         await api.postJSON(`/dashboard/admin/api/backends`, current);
@@ -586,24 +608,15 @@ function BackendsList() {
             </div>
             <BoxInside>
                 <InnerElement>
-                    <BackendContents toSet={toCreate} setToSet={setToCreate} />
+                    <BackendContents toSet={toCreate} setToSet={setToCreate} toSetS3={toCreateS3} setToSetS3={setToCreateS3} />
                     <OrError get={status} />
                 </InnerElement>
             </BoxInside>
         </OuterBox>
         <Show when={backends()}>
-            <For each={backends()!.values}>
+            <For each={backends()!}>
                 {(backend) => <SingleBackend mutate={mutate} refetch={refetch} backend={backend} />}
             </For>
         </Show>
     </ErrorBoundary>)
 }
-
-render(() => <App entries={[
-    new AppInternalEntry("Users", () => "Users", AdminUsers),
-    new AppInternalEntry("Repositories", () => "Repositories", RepositoriesList),
-    new AppInternalEntry("Backends", () => "Backends", BackendsList),
-    new AppExternalEntry("Browse", async () => { window.location.href = '/' }),
-    new AppExternalEntry("Dashboard", async () => { window.location.href = '/dashboard/' }),
-    new AppExternalEntry("Sign Out", async () => { window.location.href = '/dashboard/logout/' })
-]}/>, root!);

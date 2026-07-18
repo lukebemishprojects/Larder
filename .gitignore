@@ -1,6 +1,21 @@
-.DS_Store
-.tags
-.DS_Store
-.vscode
-.theme
-.CondaPkg/
+# eclipse
+bin
+*.launch
+.settings
+.metadata
+.classpath
+.project
+
+# idea
+out
+*.ipr
+*.iws
+*.iml
+.idea
+
+# gradle
+build
+.gradle
+
+# other
+eclipse
