@@ -303,6 +303,12 @@ final class ApiMethods {
             if (found.isEmpty()) {
                 throw new NotFoundResponse("Repository not found");
             }
+            var backend  = connection.select(found.get().backend());
+            switch (backend.type()) {
+                case RepositoryBackendType.S3 -> {
+                    connection.delete(Identifier.of(new S3BackendConfiguration.Id(id)));
+                }
+            }
             connection.delete(new RepositoryIndex.ByRepository(id));
             connection.delete(id);
             context.status(HttpStatus.NO_CONTENT);

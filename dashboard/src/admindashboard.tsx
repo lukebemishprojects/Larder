@@ -218,7 +218,7 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                     <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
                 </svg>
             </Dropdown>
-            <Show when={props.backendType() == "s3backend" && props.value.s3backend}>
+            <Show when={props.backendType() == "s3backend"}>
                 <TextInput type="text" placeholder="S3 bucket" value={props.s3value.bucket} onchange={(v) => {props.s3set("bucket", v)}} />
                 <TextInput type="text" placeholder="Prefix in bucket" value={props.s3value.prefix} onchange={(v) => {props.s3set("prefix", v)}} />
             </Show>
@@ -229,13 +229,19 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
 function SingleRepository(props: { repository: api.Repository, mutate: Setter<api.Repositories | undefined>, refetch: () => Promise<unknown> | unknown }) {
     const context = useContext(BackendsAvailable)!;
 
-    const [ toSet, setToSet ] = createStore({ ...props.repository });
+    const [ toSet, setToSet ] = createStore({
+        ...props.repository,
+        s3backend: undefined
+    });
     const [ backendType, setBackendType ] = createSignal<api.BackendConfiguration["type"] | undefined>(context.backends.find((b) => b.id == props.repository.backend)?.type);
     const [ toSetS3, setToSetS3 ] = createStore(props.repository.s3backend ? { ...props.repository.s3backend! } : api.newS3BackendConfiguration());
     const [ isDeleting, setIsDeleting ] = createSignal(false);
     const isDirty = () => {
         let key: keyof api.Repository;
         for (key in props.repository) {
+            if (key == "s3backend") {
+                continue;
+            }
             if (toSet[key] != props.repository[key]) {
                 return true;
             }
@@ -263,7 +269,10 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
             <InnerElement>
                 <div class="flex flex-row gap-2.5 w-full items-center">
                     <Button disabled={!isDirty()} onclick={async () => {
-                        const current = { ...unwrap(toSet) }
+                        const current = { ...unwrap(toSet), s3backend: undefined }
+                        if (backendType() === "s3backend") {
+                            current.s3backend = { ...unwrap(toSetS3) }
+                        }
                         if (!api.validateRepository(current, setStatus)) {
                             return;
                         }
@@ -285,7 +294,14 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
                             setIsDeleting(false);
                         }
                         if (isDirty()) {
-                            setToSet({ ...props.repository });
+                            setToSet({
+                                ...props.repository,
+                                s3backend: undefined
+                            });
+                            setToSetS3(props.repository.s3backend ? {
+                                ...props.repository.s3backend!
+                            } : api.newS3BackendConfiguration());
+                            setBackendType(context.backends.find((b) => b.id == props.repository.backend)?.type);
                         }
                     }} disabled={!isDirty() && !isDeleting()}>
                         Cancel
@@ -325,7 +341,6 @@ export function RepositoriesList() {
         return await api.fetchJSON('/dashboard/admin/api/repositories', api.Repositories);
     })
     const [ toCreate, setToCreate ] = createStore(api.newRepository());
-    const context = useContext(BackendsAvailable)!;
     const [ backendType, setBackendType ] = createSignal<api.BackendConfiguration["type"] | undefined>(undefined);
     const [ toCreateS3, setToCreateS3 ] = createStore(api.newS3BackendConfiguration());
     const [ status, setStatus ] = orErrorSignal();
@@ -345,7 +360,7 @@ export function RepositoriesList() {
                 <div class="shadow-sm"><TextInputGroup type="text" accessor={() => toCreate.name} setter={(value: string) => {
                     setToCreate("name", value);
                 }} placeholder="Create repository" submit="Create" onsubmit={async () => {
-                    const current = { ...unwrap(toCreate) }
+                    const current: api.Repository = { ...unwrap(toCreate), s3backend: undefined }
                     if (backendType() == "s3backend") {
                         current.s3backend = { ...unwrap(toCreateS3) };
                     }
