@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Larder | Login</title>
+    <link href="/_internal/index-page.css" rel="stylesheet">
+</head>
+<body>
+<div class="bg-slate-200 text-slate-900 w-100% h-100% min-h-dvh">
+    <div class="w-full flex justify-center min-h-dvh align-items-center">
+        <div class="w-2/3 flex flex-col justify-center gap-5 p-5 content-center items-center">
+            <div class="bg-slate-300 shadow-sm rounded-md p-10 gap-5 flex flex-col box content-center items-center">
+                <div class="text-center box">Logged out</div>
+                <a href="{{redirect}}" class="text-center font-semibold bg-white rounded-md text-sm border-1 py-2.5 px-3 box cursor-pointer hover:bg-slate-200 disabled:text-slate-400 disabled:bg-slate-150 disabled:cursor-auto">
+                    Sign in with OIDC
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

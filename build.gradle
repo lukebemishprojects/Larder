@@ -44,6 +44,14 @@ tasks.register("npmBuildProd", Exec) {
     inputs.dir("dashboard/src")
 }
 
+configurations {
+    dependencyScope("testDev")
+    resolvable("testDevClasspath") {
+        extendsFrom testDev
+        attributes.addAllLater(runtimeClasspath.attributes)
+    }
+}
+
 @DisableCachingByDefault(because = "For testing, should not be cached")
 abstract class TestDev extends DefaultTask {
     @Inject
@@ -73,51 +81,42 @@ abstract class TestDev extends DefaultTask {
 
     @TaskAction
     void run() {
-        Process generate = new ProcessBuilder(layout.projectDirectory.file("generate.sh").asFile.absolutePath)
-            .inheritIO().directory(layout.projectDirectory.asFile).tap {
-            environment()["LARDER_ENV"] = "dev"
-        }.start()
-        try {
-            new ProcessBuilder("docker", "compose", "-f", "docker-compose.dev.yml", "up", "--remove-orphans", "--detach")
-                .inheritIO().directory(layout.projectDirectory.asFile).start().waitFor().tap {
-                if (it != 0) throw new RuntimeException("Error starting docker: $it")
-            }
-            try {
-                execOperations.javaexec {
-                    jvmArgs('--module-path', this.modulepath.asPath)
-                    classpath(this.classpath)
-                    mainModule = "dev.lukebemish.larder"
-                    executable = javaLauncher.get().executablePath
-                    environment(
-                        LARDER_ENV: "dev",
-                        LARDER_DB_HOST: "localhost",
-                        LARDER_DB_PORT: "5432",
-                        LARDER_DB_NAME: "larder",
-                        LARDER_DB_USER: "larder",
-                        LARDER_DB_PASSWORD: "larder",
+        new ProcessBuilder("docker", "compose", "-f", "docker-compose.dev.yml", "up", "--remove-orphans", "--detach")
+            .inheritIO().directory(layout.projectDirectory.asFile).start().waitFor().tap {
+            if (it != 0) throw new RuntimeException("Error starting docker: $it")
+        }
+        execOperations.javaexec {
+            jvmArgs('--module-path', this.modulepath.asPath)
+            classpath(this.classpath)
+            mainModule = "dev.lukebemish.larder"
+            executable = javaLauncher.get().executablePath
+            environment(
+                LARDER_ENV: "dev",
+                LARDER_DB_HOST: "localhost",
+                LARDER_DB_PORT: "5432",
+                LARDER_DB_NAME: "larder",
+                LARDER_DB_USER: "larder",
+                LARDER_DB_PASSWORD: "larder",
 
-                        LARDER_S3_REGION: "",
-                        LARDER_S3_ACCESS_KEY_ID: "minioadmin",
-                        LARDER_S3_SECRET_ACCESS_KEY: "minioadmin",
-                        LARDER_S3_ENDPOINT: "http://localhost:9000"
-                    )
-                    workingDir = layout.projectDirectory
-                }
-            } finally {
-                new ProcessBuilder("docker", "compose", "-f", "docker-compose.dev.yml", "down")
-                    .inheritIO().directory(layout.projectDirectory.asFile).start().waitFor().tap {
-                    if (it != 0) throw new RuntimeException("Error starting docker: $it")
-                }
-            }
-        } finally {
-            generate.destroy()
+                LARDER_HOST: "http://localhost:8786",
+                LARDER_PORT: "8786",
+
+                LARDER_OIDC_ISSUER: "http://localhost:8282/realms/demo",
+                LARDER_OIDC_CLIENT_ID: "larder",
+                LARDER_OIDC_CLIENT_SECRET: "JsAbUxwf1dWfNInwRrgAMRgBbuGIwLgw",
+
+                LARDER_S3_REGION: "",
+                LARDER_S3_ACCESS_KEY_ID: "minioadmin",
+                LARDER_S3_SECRET_ACCESS_KEY: "minioadmin",
+                LARDER_S3_ENDPOINT: "http://localhost:9000"
+            )
+            workingDir = layout.projectDirectory
         }
     }
 }
 
 tasks.register("testDev", TestDev) {
-    modulepath.from(sourceSets.main.runtimeClasspath)
-    classpath.from("build/devResources")
+    modulepath.from(configurations.testDevClasspath)
 }
 
 tasks.named("jar", Jar) {
@@ -127,6 +126,7 @@ tasks.named("jar", Jar) {
     from(indicesProdDirectory) {
         into("dev/lukebemish/larder/indices")
     }
+    dependsOn tasks.npmBuildProd
 }
 
 dependencies {
@@ -142,6 +142,13 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:2.21.2")
     implementation("com.fasterxml.uuid:java-uuid-generator:5.2.0")
 
+    implementation("com.github.scribejava:scribejava-apis:8.3.3")
+    implementation("io.jsonwebtoken:jjwt-api:0.13.0")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.13.0")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.13.0")
+
+    implementation("io.pebbletemplates:pebble:4.1.2")
+
     annotationProcessor("dev.lukebemish:polymorphic-signatures:0.1.0")
     compileOnly("dev.lukebemish:polymorphic-signatures:0.1.0")
     implementation("dev.lukebemish:polymorphic-signatures:0.1.0") {
@@ -149,6 +156,8 @@ dependencies {
             requireFeature("utilities")
         }
     }
+
+    testDev(project(":"))
 }
 
 extraJavaModuleInfo {

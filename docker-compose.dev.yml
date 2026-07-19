@@ -2,10 +2,10 @@ services:
   minio:
     container_name: minio
     image: minio/minio:latest
-    restart: unless-stopped
+    restart: on-failure
     ports:
-      - 9000:9000
-      - 9001:9001
+      - "9000:9000"
+      - "9001:9001"
     command: "minio server --console-address 0.0.0.0:9001 /data"
     volumes:
       - type: volume
@@ -15,9 +15,9 @@ services:
   postgres:
     container_name: postgres
     image: postgres:17-alpine
-    restart: unless-stopped
+    restart: on-failure
     ports:
-      - 5432:5432
+      - "5432:5432"
     environment:
       POSTGRES_USER: larder
       POSTGRES_PASSWORD: larder
@@ -32,6 +32,58 @@ services:
         source: larder-data
         target: /var/lib/postgresql/data
 
+  keycloak-postgres:
+    container_name: keycloak-postgres
+    image: postgres:17-alpine
+    restart: on-failure
+    environment:
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U listmonk" ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks:
+      - keycloak-database
+    volumes:
+      - type: volume
+        source: keycloak-data
+        target: /var/lib/postgresql/data
+
+  keycloak:
+    container_name: keycloak
+    depends_on:
+      keycloak-postgres:
+        condition: service_healthy
+    restart: on-failure
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/postgres
+    image: quay.io/keycloak/keycloak:26.4
+    command:
+      - start-dev
+      - --http-enabled=true
+      - --db=postgres
+      - --import-realm
+    networks:
+      - keycloak-database
+    ports:
+      - "8282:8080"
+    volumes:
+      - type: bind
+        source: ./realm-export.json
+        target: /opt/keycloak/data/import/realm-export.json
+        read_only: true
+
+networks:
+  keycloak-database:
+
 volumes:
+  keycloak-data:
   larder-data:
   minio-data:

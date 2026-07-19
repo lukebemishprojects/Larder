@@ -232,7 +232,7 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
     const [ toSet, setToSet ] = createStore({
         ...props.repository,
         s3backend: undefined
-    });
+    } as api.Repository);
     const [ backendType, setBackendType ] = createSignal<api.BackendConfiguration["type"] | undefined>(context.backends.find((b) => b.id == props.repository.backend)?.type);
     const [ toSetS3, setToSetS3 ] = createStore(props.repository.s3backend ? { ...props.repository.s3backend! } : api.newS3BackendConfiguration());
     const [ isDeleting, setIsDeleting ] = createSignal(false);
@@ -269,9 +269,9 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
             <InnerElement>
                 <div class="flex flex-row gap-2.5 w-full items-center">
                     <Button disabled={!isDirty()} onclick={async () => {
-                        const current = { ...unwrap(toSet), s3backend: undefined }
+                        const current: api.Repository = { ...unwrap(toSet), s3backend: undefined }
                         if (backendType() === "s3backend") {
-                            current.s3backend = { ...unwrap(toSetS3) }
+                            current.s3backend = { ...unwrap(toSetS3) };
                         }
                         if (!api.validateRepository(current, setStatus)) {
                             return;

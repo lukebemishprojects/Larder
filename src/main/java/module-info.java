@@ -13,6 +13,10 @@ module dev.lukebemish.larder {
     requires openapi.generator;
     requires openapi.specification;
     requires annotations;
+    requires io.pebbletemplates;
+    requires scribejava.core;
+    requires scribejava.apis;
+    requires jjwt.api;
 
     opens dev.lukebemish.larder.api to com.fasterxml.jackson.databind;
 }

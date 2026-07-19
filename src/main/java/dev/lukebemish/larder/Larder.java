@@ -1,23 +1,22 @@
 package dev.lukebemish.larder;
 
-import com.fasterxml.uuid.Generators;
 import dev.lukebemish.larder.api.ApiError;
-import dev.lukebemish.larder.api.UserApi;
 import dev.lukebemish.larder.orm.ModelConnection;
 import dev.lukebemish.larder.schema.Schema;
 import dev.lukebemish.larder.schema.User;
 import io.javalin.Javalin;
-import io.javalin.apibuilder.ApiBuilder;
 import io.javalin.config.Key;
+import io.javalin.http.ContentType;
 import io.javalin.http.Context;
+import io.javalin.http.Header;
 import io.javalin.http.HttpResponseException;
 import io.javalin.http.HttpStatus;
-import io.javalin.http.NotFoundResponse;
 import io.javalin.http.UnauthorizedResponse;
 import io.javalin.http.staticfiles.Location;
 import io.javalin.openapi.plugin.OpenApiPlugin;
 import io.javalin.openapi.plugin.redoc.ReDocPlugin;
 import io.javalin.openapi.plugin.swagger.SwaggerPlugin;
+import io.pebbletemplates.pebble.PebbleEngine;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,24 +31,28 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Stream;
 
-import static io.javalin.apibuilder.ApiBuilder.delete;
-import static io.javalin.apibuilder.ApiBuilder.get;
-import static io.javalin.apibuilder.ApiBuilder.path;
-import static io.javalin.apibuilder.ApiBuilder.post;
+import static io.javalin.apibuilder.ApiBuilder.*;
 
 public class Larder {
     private static final Logger LOGGER = LoggerFactory.getLogger(Larder.class);
     public static final Key<ModelConnection> CONNECTION_KEY = new Key<>("orm model connection");
+    public static final Key<PebbleEngine> TEMPLATE_ENGINE_KEY = new Key<>("pebble template engine");
     public static final Key<Larder> APPLICATION_KEY = new Key<>("application context");
 
     private final boolean isDev;
     private final ModelConnection modelConnection;
+    private final OIDCAuthenticator oidcAuthenticator;
+    private final PebbleEngine templateEngine;
 
-    private Larder(boolean isDev, ModelConnection modelConnection) throws SQLException {
+    private final int port;
+
+    private Larder(boolean isDev, ModelConnection modelConnection, OIDCAuthenticator oidcAuthenticator, int port, PebbleEngine templateEngine) throws SQLException {
         this.isDev = isDev;
         this.modelConnection = modelConnection;
+        this.oidcAuthenticator = oidcAuthenticator;
+        this.port = port;
+        this.templateEngine = templateEngine;
 
         start();
     }
@@ -62,6 +65,7 @@ public class Larder {
             config.events.serverStopping(this.modelConnection::closeConnection);
             config.appData(CONNECTION_KEY, this.modelConnection);
             config.appData(APPLICATION_KEY, this);
+            config.appData(TEMPLATE_ENGINE_KEY, this.templateEngine);
 
             config.validation.register(UUID.class, UUID::fromString);
 
@@ -71,13 +75,20 @@ public class Larder {
             // Error handling
             config.routes.exception(UnauthorizedResponse.class, (e, ctx) -> {
                 ctx.status(e.getStatus());
-                ctx.json(new ApiError(HttpStatus.UNAUTHORIZED.getMessage()));
+                var accept = ctx.header(Header.ACCEPT);
+                if (accept == null || (accept.contains(ContentType.HTML) || accept.contains("*/*") || accept.isEmpty())) {
+                    oidcAuthenticator.fillLoginRedirect(ctx);
+                } else {
+                    ctx.json(new ApiError(HttpStatus.UNAUTHORIZED.getMessage()));
+                }
             });
             config.routes.exception(HttpResponseException.class, (e, ctx) -> {
                 ctx.status(e.getStatus());
+                // TODO: non-JSON HTML-y response for other errors
                 ctx.json(new ApiError(e.getMessage(), e.getDetails()));
             });
             config.routes.exception(Exception.class, (e, ctx) -> {
+                // TODO: non-JSON HTML-y response for other errors
                 LOGGER.error("Internal server error", e);
                 ctx.status(HttpStatus.INTERNAL_SERVER_ERROR.getCode());
                 ctx.json(new ApiError(
@@ -106,6 +117,9 @@ public class Larder {
 
             // API methods
             config.routes.apiBuilder(() -> {
+                // Redirected here after OIDC login
+                get("/login", oidcAuthenticator::handleLoginRedirect);
+
                 path("/dashboard", List.of(Role.Builtin.USER), () -> {
                     path("admin", List.of(Role.Builtin.ADMIN), () -> {
                         path("api", () -> {
@@ -128,7 +142,7 @@ public class Larder {
                         });
                     });
                     path("api", () -> {
-                        get("whoami", ctx -> ctx.json(UserApi.from(ApiMethods.whoAmI(ctx))));
+                        get("whoami", ApiMethods::whoAmI);
                         get("whatcanido", ApiMethods::whatCanIDo);
                         get("namespaces/{user}/list", ApiMethods::listNamespaces);
 
@@ -141,48 +155,26 @@ public class Larder {
             config.staticFiles.add(staticFiles -> {
                 staticFiles.hostedPath = "/dashboard";
                 staticFiles.location = Location.CLASSPATH;
-                staticFiles.directory = isDev ? "/dashboard" : "/dev/lukebemish/larder/dashboard";
+                staticFiles.directory = "/dev/lukebemish/larder/dashboard";
                 staticFiles.roles = Set.of(Role.Builtin.USER);
             });
             config.staticFiles.add(staticFiles -> {
                 staticFiles.hostedPath = "/_internal";
                 staticFiles.location = Location.CLASSPATH;
-                staticFiles.directory = isDev ? "/indices/_internal" : "/dev/lukebemish/larder/indices/_internal";
+                staticFiles.directory = "/dev/lukebemish/larder/indices/_internal";
                 staticFiles.roles = Set.of();
             });
-        }).start(8786);
+        }).start(port);
 
         Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
     }
 
-    public record AuthInfo(@Nullable User user, Set<Role> roles) {}
+    public record AuthInfo(User.@Nullable Id user, Set<Role> roles) {}
     public static final String AUTH_INFO_KEY = "auth_info";
 
-    static Set<Role> userRoles(Context context) throws SQLException {
-        var app = context.appData(APPLICATION_KEY);
-        if (context.attribute(AUTH_INFO_KEY) instanceof AuthInfo authInfo) {
-            return authInfo.roles;
-        }
-        if (app.isDev) {
-            var connection = context.appData(CONNECTION_KEY);
-            var authInfo = new AuthInfo(
-                ApiMethods.newUser(connection, new User(
-                    "xyz@example.org",
-                    // UUID is always kept the same so dev has a stable user
-                    Generators.nameBasedGenerator(ApiMethods.UUID_ISS).generate("xyz@example.org")
-                )),
-                Set.of(Role.Builtin.ADMIN, Role.Builtin.USER)
-            );
-            context.attribute(AUTH_INFO_KEY, authInfo);
-            return authInfo.roles;
-        }
-        // TODO: implement
-        return Set.of();
-    }
-
-    private void authenticate(Context context) throws SQLException {
+    private void authenticate(Context context) {
         var requiredRoles = context.routeRoles();
-        var userRoles = userRoles(context);
+        var userRoles = oidcAuthenticator.userRoles(context);
         if (userRoles.containsAll(requiredRoles)) {
             return; // User has all required roles to access
         }
@@ -194,19 +186,14 @@ public class Larder {
         if (appEnv == null) {
             appEnv = "prod";
         }
-        var signOutUrl = System.getenv("LARDER_SIGNOUT_URL");
 
         var isDev = appEnv.equals("dev");
 
-        if (!isDev && Stream.of(signOutUrl).anyMatch(Objects::isNull)) {
-            throw new RuntimeException("In production, JWT header validation must be set up for the dashboard and admin dashboard to determine identity!");
-        }
-
-        var dbHost = System.getenv("LARDER_DB_HOST");
-        var dbPort = System.getenv("LARDER_DB_PORT");
-        var dbName = System.getenv("LARDER_DB_NAME");
-        var dbUser = System.getenv("LARDER_DB_USER");
-        var dbPassword = System.getenv("LARDER_DB_PASSWORD");
+        var dbHost = Objects.requireNonNull(System.getenv("LARDER_DB_HOST"));
+        var dbPort = Objects.requireNonNull(System.getenv("LARDER_DB_PORT"));
+        var dbName = Objects.requireNonNull(System.getenv("LARDER_DB_NAME"));
+        var dbUser = Objects.requireNonNull(System.getenv("LARDER_DB_USER"));
+        var dbPassword = Objects.requireNonNull(System.getenv("LARDER_DB_PASSWORD"));
         var dbUrl = String.format(
             "jdbc:postgresql://%s:%s/%s",
             URLEncoder.encode(dbHost, StandardCharsets.UTF_8),
@@ -217,10 +204,26 @@ public class Larder {
         dbProps.setProperty("user", dbUser);
         dbProps.setProperty("password", dbPassword);
 
+        var larderPort = Integer.parseInt(System.getenv().getOrDefault("LARDER_PORT", "8786"));
+        var larderHost = System.getenv().getOrDefault("LARDER_HOST", "http://localhost:"+larderPort);
+
+        var larderOidcIssuer = Objects.requireNonNull(System.getenv("LARDER_OIDC_ISSUER"));
+        var larderOidcClientId = Objects.requireNonNull(System.getenv("LARDER_OIDC_CLIENT_ID"));
+        var larderOidcClientSecret = Objects.requireNonNull(System.getenv("LARDER_OIDC_CLIENT_SECRET"));
+
+        var templateLoader = new ModuleLoader(Larder.class);
+        templateLoader.setPrefix("/dev/lukebemish/larder/indices");
+        PebbleEngine templateEngine = new PebbleEngine.Builder()
+            .loader(templateLoader)
+            .build();
+
         try {
             new Larder(
                 isDev,
-                new ModelConnection(DriverManager.getConnection(dbUrl, dbProps))
+                new ModelConnection(DriverManager.getConnection(dbUrl, dbProps)),
+                new OIDCAuthenticator(larderOidcIssuer, larderOidcClientId, larderOidcClientSecret, larderHost),
+                larderPort,
+                templateEngine
             );
         } catch (SQLException e) {
             throw new RuntimeException(e);

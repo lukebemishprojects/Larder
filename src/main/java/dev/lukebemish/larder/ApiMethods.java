@@ -68,9 +68,19 @@ final class ApiMethods {
             ),
         }
     )
-    public static User whoAmI(Context context) {
+    public static void whoAmI(Context context) throws SQLException {
+        var authUser = authenticatedUser(context);
+        context.json(UserApi.from(connection(context).select(Identifier.of(authUser))));
+    }
+
+    public static User.Id authenticatedUser(Context context) {
         Larder.AuthInfo identity = context.attribute(Larder.AUTH_INFO_KEY);
         return Objects.requireNonNull(Objects.requireNonNull(identity).user());
+    }
+
+    public static Set<Role> authenticatedRoles(Context context) {
+        Larder.AuthInfo identity = context.attribute(Larder.AUTH_INFO_KEY);
+        return Objects.requireNonNull(Objects.requireNonNull(identity).roles());
     }
 
     @OpenApi(
@@ -145,7 +155,7 @@ final class ApiMethods {
     }
 
     private static void adminOrSelf(Context context, UUID uuid) throws SQLException {
-        if (!Larder.userRoles(context).contains(Role.Builtin.ADMIN) && !whoAmI(context).id().equals(uuid)) {
+        if (!authenticatedRoles(context).contains(Role.Builtin.ADMIN) && !authenticatedUser(context).id().equals(uuid)) {
             throw new UnauthorizedResponse();
         }
     }
