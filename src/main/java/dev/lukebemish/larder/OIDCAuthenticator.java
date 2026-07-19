@@ -1,10 +1,7 @@
 package dev.lukebemish.larder;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.api.jsonata4java.expressions.EvaluateException;
+import com.api.jsonata4java.expressions.Expressions;
 import com.fasterxml.uuid.Generators;
 import com.github.scribejava.apis.openid.OpenIdJsonTokenExtractor;
 import com.github.scribejava.apis.openid.OpenIdOAuth2AccessToken;
@@ -31,6 +28,11 @@ import io.jsonwebtoken.security.Jwks;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.json.JsonFactory;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -51,8 +53,10 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -75,9 +79,6 @@ final class OIDCAuthenticator {
     private final Function<String, String> authRedirectGenerator;
     private final AtomicInteger alive = new AtomicInteger();
     private final SecureRandom secureRandom = new SecureRandom();
-
-    private final String clientSecret;
-    private final String clientId;
 
     private final JwtParser idJwtParser;
 
@@ -111,10 +112,15 @@ final class OIDCAuthenticator {
         }
     }
 
-    public OIDCAuthenticator(String issuer, String clientId, String clientSecret, String host) {
-        this.clientId = clientId;
-        this.clientSecret = clientSecret;
+    private final List<String> scopes;
+    private final Expressions adminRoleExpression;
 
+    public OIDCAuthenticator(String issuer, String clientId, String clientSecret, String host, List<String> additionalOauthScopes, Expressions adminRoleExpression) {
+        this.adminRoleExpression = adminRoleExpression;
+        var scopes = new ArrayList<String>();
+        scopes.add("openid");
+        scopes.addAll(additionalOauthScopes);
+        this.scopes = List.copyOf(scopes);
         try {
             this.hmacKey = KeyGenerator.getInstance("HmacSHA256").generateKey();
             this.aesKey = KeyGenerator.getInstance("AES").generateKey();
@@ -124,13 +130,13 @@ final class OIDCAuthenticator {
             var wellKnownUrl = new URI(issuer + (issuer.endsWith("/") ? "" : "/") + ".well-known/openid-configuration").toURL();
             try (var config = wellKnownUrl.openStream()) {
                 var configTree = mapper.readTree(config);
-                var authorization = configTree.get("authorization_endpoint").asText();
-                var tokenEndpoint = configTree.get("token_endpoint").asText();
+                var authorization = configTree.get("authorization_endpoint").asString();
+                var tokenEndpoint = configTree.get("token_endpoint").asString();
                 this.oidcProviderApi = new OIDCProviderApi(tokenEndpoint, authorization);
 
                 this.redirectUrl = String.format("%s/login", host);
 
-                var jwksUri = new URI(configTree.get("jwks_uri").asText()).toURL();
+                var jwksUri = new URI(configTree.get("jwks_uri").asString()).toURL();
                 var jwkSet = new ExpiringValue<>(() -> {
                     try (var is = jwksUri.openStream()) {
                         return Jwks.setParser()
@@ -166,7 +172,7 @@ final class OIDCAuthenticator {
                     })
                     .build();
 
-                this.userInfoEndpoint = configTree.get("userinfo_endpoint").asText();
+                this.userInfoEndpoint = configTree.get("userinfo_endpoint").asString();
 
                 this.oauth2service = new ServiceBuilder(clientId)
                     .apiSecret(clientSecret)
@@ -188,7 +194,7 @@ final class OIDCAuthenticator {
                         "code",
                         clientId,
                         redirectUrl,
-                        "openid",
+                        String.join(" ", this.scopes),
                         state,
                         Map.of()
                     );
@@ -234,7 +240,7 @@ final class OIDCAuthenticator {
             throw new BadRequestResponse("Authentication failed");
         }
 
-        var destination = jwtJson.get("destination").asText();
+        var destination = jwtJson.get("destination").asString();
 
         try {
             var token = (OpenIdOAuth2AccessToken) oauth2service.getAccessToken(new AccessTokenRequestParams(code)
@@ -265,7 +271,7 @@ final class OIDCAuthenticator {
             var userInfo = oauth2service.execute(userInfoRequest);
 
             var userInfoJson = mapper.readTree(userInfo.getBody());
-            var userInfoSub = userInfoJson.get("sub").asText();
+            var userInfoSub = userInfoJson.get("sub").asString();
             if (!userInfoSub.equals(sub)) {
                 // These don't match... so we need to error
                 logger.warn("OIDC provider gave non-matching 'sub' from identity token and userinfo; cannot use it to authenticate!");
@@ -282,7 +288,7 @@ final class OIDCAuthenticator {
 
             // We have enough info to get / query the user now...
             context.appData(Larder.CONNECTION_KEY).transact(c -> {
-                var user = new User(email.asText(), userUUID);
+                var user = new User(email.asString(), userUUID);
                 var userId = Identifier.of(user);
                 var existing = c.find(userId);
                 if (existing.isPresent()) {
@@ -296,7 +302,17 @@ final class OIDCAuthenticator {
 
             // Finally, make the session JWT token and add as a cookie
             // This requires knowing roles
-            var userJwt = userJwt(userUUID, Set.of(Role.Builtin.ADMIN, Role.Builtin.USER) /* TODO: implement */);
+
+            var idTokenClaimsJson = mapper.valueToTree(idTokenJwt.getPayload());
+            boolean isAdmin = false;
+            try {
+                System.out.println(idTokenClaimsJson); // TODO: remove
+                isAdmin = adminRoleExpression.evaluate(idTokenClaimsJson).asBoolean();
+            } catch (EvaluateException e) {
+                logger.warn("Could not evaluate role rule for 'admin': ", e);
+            }
+
+            var userJwt = userJwt(userUUID, isAdmin ? Set.of(Role.Builtin.ADMIN, Role.Builtin.USER) : Set.of(Role.Builtin.USER));
             context.cookie(SESSION_TOKEN_COOKIE, userJwt);
 
             context.redirect(destination);
@@ -401,7 +417,7 @@ final class OIDCAuthenticator {
                 return bodyJson;
             } catch (NoSuchAlgorithmException | InvalidKeyException e) {
                 throw new RuntimeException(e);
-            } catch (JsonProcessingException e) {
+            } catch (JacksonException e) {
                 return null;
             }
         } else {
@@ -414,8 +430,8 @@ final class OIDCAuthenticator {
         if (bodyJson == null) {
             return null;
         }
-        var userUUID = UUID.fromString(bodyJson.get("user").asText());
-        var roles = bodyJson.get("roles").valueStream().map(JsonNode::asText).<Role>map(roleText -> {
+        var userUUID = UUID.fromString(bodyJson.get("user").asString());
+        var roles = bodyJson.get("roles").valueStream().map(JsonNode::asString).<Role>map(roleText -> {
             try {
                 return Role.Builtin.valueOf(roleText.toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {

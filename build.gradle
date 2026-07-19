@@ -52,6 +52,17 @@ configurations {
     }
 }
 
+def unspecifiedDeps = [
+    "JSONata4Java": [
+        "com.google.gson",
+        "org.antlr.antlr4.runtime",
+        "org.apache.commons.text"
+    ],
+    "jjwt.api": [
+        "com.fasterxml.jackson.databind"
+    ]
+]
+
 @DisableCachingByDefault(because = "For testing, should not be cached")
 abstract class TestDev extends DefaultTask {
     @Inject
@@ -72,6 +83,9 @@ abstract class TestDev extends DefaultTask {
     @Input
     abstract Property<JavaLauncher> getJavaLauncher()
 
+    @Input
+    abstract MapProperty<String, List<String>> getExtraRequires();
+
     @Inject
     TestDev() {
         javaLauncher.convention(toolchains.launcherFor {
@@ -87,6 +101,12 @@ abstract class TestDev extends DefaultTask {
         }
         execOperations.javaexec {
             jvmArgs('--module-path', this.modulepath.asPath)
+            extraRequires.get().each {a, deps ->
+                deps.each { dep ->
+                    jvmArgs('--add-modules', dep)
+                    jvmArgs('--add-reads', "$a=$dep")
+                }
+            }
             classpath(this.classpath)
             mainModule = "dev.lukebemish.larder"
             executable = javaLauncher.get().executablePath
@@ -103,7 +123,10 @@ abstract class TestDev extends DefaultTask {
 
                 LARDER_OIDC_ISSUER: "http://localhost:8282/realms/demo",
                 LARDER_OIDC_CLIENT_ID: "larder",
-                LARDER_OIDC_CLIENT_SECRET: "JsAbUxwf1dWfNInwRrgAMRgBbuGIwLgw",
+                LARDER_OIDC_CLIENT_SECRET: "M8MoOUmyzBBgRPvUsoAJcMsBZBpSqcNR",
+
+                LARDER_OIDC_ADDITIONAL_SCOPES: "roles",
+                LARDER_OIDC_ROLE_ADMIN: "\"admin\" in realm_access.roles",
 
                 LARDER_S3_REGION: "",
                 LARDER_S3_ACCESS_KEY_ID: "minioadmin",
@@ -117,6 +140,7 @@ abstract class TestDev extends DefaultTask {
 
 tasks.register("testDev", TestDev) {
     modulepath.from(configurations.testDevClasspath)
+    extraRequires = unspecifiedDeps
 }
 
 tasks.named("jar", Jar) {
@@ -139,8 +163,9 @@ dependencies {
     implementation("io.javalin.community.openapi:javalin-redoc-plugin:7.2.2")
     implementation("org.postgresql:postgresql:42.7.11")
     implementation("org.slf4j:slf4j-simple:2.0.16")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.21.2")
+    implementation("tools.jackson.core:jackson-databind:3.2.1")
     implementation("com.fasterxml.uuid:java-uuid-generator:5.2.0")
+    implementation("com.ibm.jsonata4java:JSONata4Java:3.0.0")
 
     implementation("com.github.scribejava:scribejava-apis:8.3.3")
     implementation("io.jsonwebtoken:jjwt-api:0.13.0")

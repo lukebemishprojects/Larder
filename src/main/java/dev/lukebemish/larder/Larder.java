@@ -1,5 +1,7 @@
 package dev.lukebemish.larder;
 
+import com.api.jsonata4java.expressions.Expressions;
+import com.api.jsonata4java.expressions.ParseException;
 import dev.lukebemish.larder.api.ApiError;
 import dev.lukebemish.larder.orm.ModelConnection;
 import dev.lukebemish.larder.schema.Schema;
@@ -13,6 +15,7 @@ import io.javalin.http.HttpResponseException;
 import io.javalin.http.HttpStatus;
 import io.javalin.http.UnauthorizedResponse;
 import io.javalin.http.staticfiles.Location;
+import io.javalin.json.JavalinJackson3;
 import io.javalin.openapi.plugin.OpenApiPlugin;
 import io.javalin.openapi.plugin.redoc.ReDocPlugin;
 import io.javalin.openapi.plugin.swagger.SwaggerPlugin;
@@ -21,10 +24,12 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -71,6 +76,8 @@ public class Larder {
 
             // General
             config.router.ignoreTrailingSlashes = true;
+
+            config.jsonMapper(new JavalinJackson3());
 
             // Error handling
             config.routes.exception(UnauthorizedResponse.class, (e, ctx) -> {
@@ -211,6 +218,18 @@ public class Larder {
         var larderOidcClientId = Objects.requireNonNull(System.getenv("LARDER_OIDC_CLIENT_ID"));
         var larderOidcClientSecret = Objects.requireNonNull(System.getenv("LARDER_OIDC_CLIENT_SECRET"));
 
+        var larderOidcAdditionalScopes = Arrays.stream(System.getenv().getOrDefault("LARDER_OIDC_ADDITIONAL_SCOPES", "").split(" "))
+            .filter(s -> !s.isEmpty())
+            .toList();
+
+        var larderOidcRoleAdminExpression = System.getenv().getOrDefault("LARDER_OIDC_ROLE_ADMIN", "false");
+        Expressions larderOidcRoleAdminExpressionCompiled;
+        try {
+            larderOidcRoleAdminExpressionCompiled = Expressions.parse(larderOidcRoleAdminExpression);
+        } catch (ParseException | IOException e) {
+            throw new RuntimeException(e);
+        }
+
         var templateLoader = new ModuleLoader(Larder.class);
         templateLoader.setPrefix("/dev/lukebemish/larder/indices");
         PebbleEngine templateEngine = new PebbleEngine.Builder()
@@ -221,7 +240,7 @@ public class Larder {
             new Larder(
                 isDev,
                 new ModelConnection(DriverManager.getConnection(dbUrl, dbProps)),
-                new OIDCAuthenticator(larderOidcIssuer, larderOidcClientId, larderOidcClientSecret, larderHost),
+                new OIDCAuthenticator(larderOidcIssuer, larderOidcClientId, larderOidcClientSecret, larderHost, larderOidcAdditionalScopes, larderOidcRoleAdminExpressionCompiled),
                 larderPort,
                 templateEngine
             );
