@@ -30,6 +30,13 @@ import static java.lang.constant.ConstantDescs.*;
  * The (singular) implementation of this type is generated at runtime from a map of names to locations stored in the
  * json file pointed to by {@code System.getenv("LARDER_FILESYSTEM_BACKEND_LOCATIONS")}. If no such json file is
  * provided, then the implementation is empty.
+ * <p>
+ * <em>Why</em> is this done this way instead of using a record class with an array of values or something? Well... I
+ * figured I'd end up having to do something like this more than once, and can abstract this out when I do; plus, it
+ * saves implementing a bunch of serialization logic, valueOf, or the like.
+ * <p>
+ * This type is designed such that it is impossible to create an instance of it other than those defined through the
+ * provided file; other locations simply cannot be represented.
  */
 @JsonSerialize(using = LocationSerializer.class)
 @JsonDeserialize(using = LocationDeserializer.class)

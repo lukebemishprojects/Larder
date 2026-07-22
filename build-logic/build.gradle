@@ -1,0 +1,12 @@
+plugins {
+    id 'java-gradle-plugin'
+}
+
+gradlePlugin {
+    plugins {
+        register('convention') {
+            implementationClass = 'dev.lukebemish.larder.buildtooling.ConventionPlugin'
+            id = 'build-logic-conventions'
+        }
+    }
+}
