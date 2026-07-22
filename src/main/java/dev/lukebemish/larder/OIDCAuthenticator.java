@@ -236,7 +236,6 @@ final class OIDCAuthenticator {
 
         var jwtJson = validateJwt(redirectJwt);
         if (jwtJson == null) {
-            System.out.println(redirectJwt);
             throw new BadRequestResponse("Authentication failed");
         }
 
@@ -306,7 +305,6 @@ final class OIDCAuthenticator {
             var idTokenClaimsJson = mapper.valueToTree(idTokenJwt.getPayload());
             boolean isAdmin = false;
             try {
-                System.out.println(idTokenClaimsJson); // TODO: remove
                 isAdmin = adminRoleExpression.evaluate(idTokenClaimsJson).asBoolean();
             } catch (EvaluateException e) {
                 logger.warn("Could not evaluate role rule for 'admin': ", e);

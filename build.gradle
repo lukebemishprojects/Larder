@@ -1,8 +1,7 @@
 plugins {
     id 'java'
     id 'build-logic-conventions'
-    // TODO: centralize
-    id 'dev.lukebemish.javac-post-processor' version '0.1.10'
+    id 'dev.lukebemish.javac-post-processor'
 }
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(25)
@@ -40,18 +39,18 @@ tasks.register("npmBuildProd", Exec) {
 }
 
 configurations {
-    dependencyScope("testDev")
-    resolvable("testDevClasspath") {
-        extendsFrom testDev
+    dependencyScope("application")
+    resolvable("applicationClasspath") {
+        extendsFrom application
         attributes.addAllLater(runtimeClasspath.attributes)
     }
 }
 
 tasks.named("jar", Jar) {
-    from(dashboardProdDirectory) {
+    from(fileTree(dashboardProdDirectory)) {
         into("dev/lukebemish/larder/dashboard")
     }
-    from(indicesProdDirectory) {
+    from(fileTree(indicesProdDirectory)) {
         into("dev/lukebemish/larder/indices")
     }
     // Excluded due to runtime impl generation
@@ -88,7 +87,7 @@ dependencies {
         }
     }
 
-    testDev(project(":"))
+    application(project(":"))
 }
 
 modularize {
@@ -98,7 +97,57 @@ modularize {
     ]
 }
 
-def modulesToAdd = ["jjwt.impl"]
+def modulesToAdd = [
+    "jjwt.impl",
+]
+
+tasks.named('compileJava', JavaCompile) {
+    javacPostProcessor.plugins.add('dev.lukebemish.polymorphic-signatures')
+    modularity.inferModulePath = true
+
+    options.javaModuleVersion = project.version.toString()
+    options.javaModuleMainClass = 'dev.lukebemish.larder.Larder'
+}
+
+
+tasks.register("jpackage", dev.lukebemish.larder.buildtooling.JPackageTask) {
+    javaCompiler = javaToolchains.compilerFor {
+        languageVersion = JavaLanguageVersion.of(25)
+        vendor = JvmVendorSpec.AMAZON
+    }
+    modulePath.from(configurations.applicationClasspath)
+    mainModule = "dev.lukebemish.larder"
+    imageName = project.name
+    imageVersion = project.version as String
+    destinationDirectory = layout.buildDirectory.dir("jpackage")
+    addModules = modulesToAdd
+}
+
+def testEnvMap = [
+    LARDER_ENV: "dev",
+    LARDER_DB_HOST: "localhost",
+    LARDER_DB_PORT: "5432",
+    LARDER_DB_NAME: "larder",
+    LARDER_DB_USER: "larder",
+    LARDER_DB_PASSWORD: "larder",
+
+    LARDER_HOST: "http://localhost:8786",
+    LARDER_PORT: "8786",
+
+    LARDER_OIDC_ISSUER: "http://localhost:8282/realms/demo",
+    LARDER_OIDC_CLIENT_ID: "larder",
+    LARDER_OIDC_CLIENT_SECRET: "M8MoOUmyzBBgRPvUsoAJcMsBZBpSqcNR",
+
+    LARDER_OIDC_ADDITIONAL_SCOPES: "roles",
+    LARDER_OIDC_ROLE_ADMIN: "\"admin\" in realm_access.roles",
+
+    LARDER_S3_REGION: "",
+    LARDER_S3_ACCESS_KEY_ID: "minioadmin",
+    LARDER_S3_SECRET_ACCESS_KEY: "minioadmin",
+    LARDER_S3_ENDPOINT: "http://localhost:9000",
+
+    LARDER_FILESYSTEM_BACKEND_LOCATIONS: "./dev-filesystem-backends.json"
+]
 
 tasks.register("startDevDocker", Exec) {
     commandLine("docker", "compose", "-f", "docker-compose.dev.yml", "up", "--remove-orphans", "--detach")
@@ -107,34 +156,10 @@ tasks.register("startDevDocker", Exec) {
 }
 
 tasks.register("testDev", JavaExec) {
-    environment(
-        LARDER_ENV: "dev",
-        LARDER_DB_HOST: "localhost",
-        LARDER_DB_PORT: "5432",
-        LARDER_DB_NAME: "larder",
-        LARDER_DB_USER: "larder",
-        LARDER_DB_PASSWORD: "larder",
-
-        LARDER_HOST: "http://localhost:8786",
-        LARDER_PORT: "8786",
-
-        LARDER_OIDC_ISSUER: "http://localhost:8282/realms/demo",
-        LARDER_OIDC_CLIENT_ID: "larder",
-        LARDER_OIDC_CLIENT_SECRET: "M8MoOUmyzBBgRPvUsoAJcMsBZBpSqcNR",
-
-        LARDER_OIDC_ADDITIONAL_SCOPES: "roles",
-        LARDER_OIDC_ROLE_ADMIN: "\"admin\" in realm_access.roles",
-
-        LARDER_S3_REGION: "",
-        LARDER_S3_ACCESS_KEY_ID: "minioadmin",
-        LARDER_S3_SECRET_ACCESS_KEY: "minioadmin",
-        LARDER_S3_ENDPOINT: "http://localhost:9000",
-
-        LARDER_FILESYSTEM_BACKEND_LOCATIONS: "./dev-filesystem-backends.json"
-    )
+    environment(testEnvMap)
     workingDir = layout.projectDirectory
     mainModule = "dev.lukebemish.larder"
-    classpath(configurations.testDevClasspath)
+    classpath(configurations.applicationClasspath)
     javaLauncher = javaToolchains.launcherFor {
         it.languageVersion = JavaLanguageVersion.of(25)
     }
@@ -145,10 +170,11 @@ tasks.register("testDev", JavaExec) {
     outputs.upToDateWhen { false }
 }
 
-tasks.named('compileJava', JavaCompile) {
-    javacPostProcessor.plugins.add('dev.lukebemish.polymorphic-signatures')
-    modularity.inferModulePath = true
-
-    options.javaModuleVersion = project.version.toString()
-    options.javaModuleMainClass = 'dev.lukebemish.larder.Larder'
+tasks.register("testJPackage", Exec) {
+    environment(testEnvMap)
+    workingDir = layout.projectDirectory
+    executable = layout.buildDirectory.file("jpackage/larder/bin/larder").get()
+    dependsOn tasks.startDevDocker
+    dependsOn tasks.jpackage
+    outputs.upToDateWhen { false }
 }

@@ -64,7 +64,7 @@ public abstract class ConventionPlugin implements Plugin<Project> {
         });
     }
 
-    private static RegularFile getBinaryPath(JavaCompiler compiler, String tool) {
+    static RegularFile getBinaryPath(JavaCompiler compiler, String tool) {
         var compilerFile = compiler.getExecutablePath().getAsFile().getName();
         return compiler.getMetadata().getInstallationPath().dir("bin").file(compilerFile.endsWith(".exe") ? tool + ".exe" : tool);
     }

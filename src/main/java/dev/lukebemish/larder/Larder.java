@@ -27,6 +27,8 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Arrays;
@@ -159,21 +161,62 @@ public class Larder {
             });
 
             // Static files (dev + prod prefixes for indices styling and dashboard)
+            // First, we unpack these files to temporary directories
+
+            var isInJar = isInJar();
             config.staticFiles.add(staticFiles -> {
                 staticFiles.hostedPath = "/dashboard";
-                staticFiles.location = Location.CLASSPATH;
-                staticFiles.directory = "/dev/lukebemish/larder/dashboard";
+                staticFiles.location = isInJar ? Location.CLASSPATH : Location.EXTERNAL;
+                staticFiles.directory = unpackIfNeeded("/dev/lukebemish/larder/dashboard", isInJar);
                 staticFiles.roles = Set.of(Role.Builtin.USER);
             });
             config.staticFiles.add(staticFiles -> {
                 staticFiles.hostedPath = "/_internal";
-                staticFiles.location = Location.CLASSPATH;
-                staticFiles.directory = "/dev/lukebemish/larder/indices/_internal";
+                staticFiles.location = isInJar ? Location.CLASSPATH : Location.EXTERNAL;
+                staticFiles.directory = unpackIfNeeded("/dev/lukebemish/larder/indices/_internal", isInJar);
                 staticFiles.roles = Set.of();
             });
         }).start(port);
 
         Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
+    }
+
+    private static boolean isInJar() {
+        var url = Larder.class.getResource("/"+Larder.class.getName().replace('.', '/')+".class");
+        return url != null && Objects.equals(url.getProtocol(), "jar");
+    }
+
+    private static String unpackIfNeeded(String path, boolean isInJar) {
+        if (isInJar) {
+            return path;
+        }
+        else {
+            var trimmedPath = path.startsWith("/") ? path.substring(1) : path;
+            try (var moduleReader = Larder.class.getModule().getLayer().configuration().modules().stream()
+                .filter(it -> it.name().equals(Larder.class.getModule().getName()))
+                .findAny()
+                .orElseThrow()
+                .reference()
+                .open()) {
+                var tempDir = Files.createTempDirectory("larder");
+                for (var resourcePath : moduleReader.list()
+                    .filter(it -> it.startsWith(trimmedPath))
+                    .toList()) {
+                    var relPath = resourcePath.substring(trimmedPath.length());
+                    if (relPath.startsWith("/")) {
+                        relPath = relPath.substring(1);
+                    }
+                    try (var rStream = Larder.class.getModule().getResourceAsStream("/"+resourcePath)) {
+                        var target = tempDir.resolve(relPath);
+                        Files.createDirectories(target.getParent());
+                        Files.copy(rStream, target, StandardCopyOption.REPLACE_EXISTING);
+                    }
+                }
+                return tempDir.toAbsolutePath().toString();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     public record AuthInfo(User.@Nullable Id user, Set<Role> roles) {}
@@ -196,11 +239,11 @@ public class Larder {
 
         var isDev = appEnv.equals("dev");
 
-        var dbHost = Objects.requireNonNull(System.getenv("LARDER_DB_HOST"));
-        var dbPort = Objects.requireNonNull(System.getenv("LARDER_DB_PORT"));
-        var dbName = Objects.requireNonNull(System.getenv("LARDER_DB_NAME"));
-        var dbUser = Objects.requireNonNull(System.getenv("LARDER_DB_USER"));
-        var dbPassword = Objects.requireNonNull(System.getenv("LARDER_DB_PASSWORD"));
+        var dbHost = Objects.requireNonNull(System.getenv("LARDER_DB_HOST"), "ENV[LARDER_DB_HOST]");
+        var dbPort = Objects.requireNonNull(System.getenv("LARDER_DB_PORT"), "ENV[LARDER_DB_PORT]");
+        var dbName = Objects.requireNonNull(System.getenv("LARDER_DB_NAME"), "ENV[LARDER_DB_NAME]");
+        var dbUser = Objects.requireNonNull(System.getenv("LARDER_DB_USER"), "ENV[LARDER_DB_USER]");
+        var dbPassword = Objects.requireNonNull(System.getenv("LARDER_DB_PASSWORD"), "ENV[LARDER_DB_PASSWORD]");
         var dbUrl = String.format(
             "jdbc:postgresql://%s:%s/%s",
             URLEncoder.encode(dbHost, StandardCharsets.UTF_8),
@@ -214,9 +257,9 @@ public class Larder {
         var larderPort = Integer.parseInt(System.getenv().getOrDefault("LARDER_PORT", "8786"));
         var larderHost = System.getenv().getOrDefault("LARDER_HOST", "http://localhost:"+larderPort);
 
-        var larderOidcIssuer = Objects.requireNonNull(System.getenv("LARDER_OIDC_ISSUER"));
-        var larderOidcClientId = Objects.requireNonNull(System.getenv("LARDER_OIDC_CLIENT_ID"));
-        var larderOidcClientSecret = Objects.requireNonNull(System.getenv("LARDER_OIDC_CLIENT_SECRET"));
+        var larderOidcIssuer = Objects.requireNonNull(System.getenv("LARDER_OIDC_ISSUER"), "ENV[LARDER_OIDC_ISSUER]");
+        var larderOidcClientId = Objects.requireNonNull(System.getenv("LARDER_OIDC_CLIENT_ID"), "ENV[LARDER_OIDC_CLIENT_ID]");
+        var larderOidcClientSecret = Objects.requireNonNull(System.getenv("LARDER_OIDC_CLIENT_SECRET"), "ENV[LARDER_OIDC_CLIENT_SECRET]");
 
         var larderOidcAdditionalScopes = Arrays.stream(System.getenv().getOrDefault("LARDER_OIDC_ADDITIONAL_SCOPES", "").split(" "))
             .filter(s -> !s.isEmpty())

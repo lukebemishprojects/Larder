@@ -1,0 +1,7 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+# To regenerate this file, run: ./gradlew dependencies --write-locks
+dev.lukebemish.javac-post-processor:dev.lukebemish.javac-post-processor.gradle.plugin:0.1.10=classpath
+dev.lukebemish.javac-post-processor:plugin:0.1.10=classpath
+empty=
