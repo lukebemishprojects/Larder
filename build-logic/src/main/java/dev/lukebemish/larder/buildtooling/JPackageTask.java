@@ -84,7 +84,7 @@ public abstract class JPackageTask extends DefaultTask {
 
                 // By default, would have "--strip-debug"; modified to keep debug info
                 // Also needs "--bind-services" or service impls won't be bundled
-                "--jlink-options", "--strip-native-commands --no-man-pages --no-header-files --bind-services",
+                "--jlink-options", "--strip-native-commands --no-man-pages --no-header-files --bind-services --compress=zip-9",
 
                 // Must be specified both for jlink and for launching the application
                 "--add-modules", String.join(",", getAddModules().get()),
