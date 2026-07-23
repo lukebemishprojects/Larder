@@ -18,6 +18,7 @@ import dev.lukebemish.larder.schema.User;
 import dev.lukebemish.larder.utils.ExpiringValue;
 import io.javalin.http.BadRequestResponse;
 import io.javalin.http.Context;
+import io.javalin.http.NotFoundResponse;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
@@ -44,6 +45,7 @@ import java.io.IOException;
 import java.io.StringWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.Key;
@@ -84,6 +86,7 @@ final class OIDCAuthenticator {
 
     private final String redirectUrl;
     private final String userInfoEndpoint;
+    private final String endSessionEndpoint;
 
     private final OIDCProviderApi oidcProviderApi;
 
@@ -114,6 +117,7 @@ final class OIDCAuthenticator {
 
     private final List<String> scopes;
     private final Expressions adminRoleExpression;
+    private final String host;
 
     public OIDCAuthenticator(String issuer, String clientId, String clientSecret, String host, List<String> additionalOauthScopes, Expressions adminRoleExpression) {
         this.adminRoleExpression = adminRoleExpression;
@@ -121,6 +125,7 @@ final class OIDCAuthenticator {
         scopes.add("openid");
         scopes.addAll(additionalOauthScopes);
         this.scopes = List.copyOf(scopes);
+        this.host = host;
         try {
             this.hmacKey = KeyGenerator.getInstance("HmacSHA256").generateKey();
             this.aesKey = KeyGenerator.getInstance("AES").generateKey();
@@ -132,6 +137,7 @@ final class OIDCAuthenticator {
                 var configTree = mapper.readTree(config);
                 var authorization = configTree.get("authorization_endpoint").asString();
                 var tokenEndpoint = configTree.get("token_endpoint").asString();
+                this.endSessionEndpoint = configTree.get("end_session_endpoint").asString();
                 this.oidcProviderApi = new OIDCProviderApi(tokenEndpoint, authorization);
 
                 this.redirectUrl = String.format("%s/login", host);
@@ -216,6 +222,19 @@ final class OIDCAuthenticator {
             throw new RuntimeException(e);
         }
         context.html(writer.toString());
+    }
+
+    public void requestLogin(Context context) {
+        var target = context.queryParam("target");
+        target = target == null ? null : new String(Base64.getUrlDecoder().decode(target), StandardCharsets.UTF_8);
+        try {
+            if (target == null || new URI(target).getScheme() != null) {
+                throw new NotFoundResponse();
+            }
+        } catch (URISyntaxException e) {
+            throw new NotFoundResponse();
+        }
+        context.redirect(target);
     }
 
     public void handleLoginRedirect(Context context) {
@@ -310,7 +329,7 @@ final class OIDCAuthenticator {
                 logger.warn("Could not evaluate role rule for 'admin': ", e);
             }
 
-            var userJwt = userJwt(userUUID, isAdmin ? Set.of(Role.Builtin.ADMIN, Role.Builtin.USER) : Set.of(Role.Builtin.USER));
+            var userJwt = userJwt(idToken, userUUID, isAdmin ? Set.of(Role.Builtin.ADMIN, Role.Builtin.USER) : Set.of(Role.Builtin.USER));
             context.cookie(SESSION_TOKEN_COOKIE, userJwt);
 
             context.redirect(destination);
@@ -319,15 +338,74 @@ final class OIDCAuthenticator {
         }
     }
 
+    public void requestLogout(Context context) {
+        var sessionJwt = context.cookie(SESSION_TOKEN_COOKIE);
+        var idToken = sessionJwt == null ? null : recoverIdToken(sessionJwt);
+        var targetUrl = String.format("%s/logout", host);
+
+        var resultingUrl = String.format("%s/", host);
+
+        String state;
+        try {
+            var cipher = Cipher.getInstance("AES");
+            cipher.init(Cipher.ENCRYPT_MODE, this.aesKey);
+            state = Base64.getUrlEncoder().encodeToString(cipher.doFinal(resultingUrl.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchPaddingException | IllegalBlockSizeException | NoSuchAlgorithmException | InvalidKeyException |
+                 BadPaddingException e) {
+            throw new RuntimeException(e);
+        }
+
+        if (sessionJwt != null) {
+            context.removeCookie(SESSION_TOKEN_COOKIE);
+        }
+
+        if (idToken == null) {
+            context.redirect(String.format(
+                "%s?state=%s",
+                targetUrl,
+                state
+            ));
+            return;
+        }
+
+        context.redirect(String.format(
+            "%s?id_token=%s&state=%s&redirect_uri=%s",
+            endSessionEndpoint, URLEncoder.encode(idToken, StandardCharsets.UTF_8), state, URLEncoder.encode(targetUrl, StandardCharsets.UTF_8)
+        ));
+    }
+
+    public void handleLogoutRequest(Context context) {
+        context.removeCookie(SESSION_TOKEN_COOKIE);
+        var state = context.queryParam("state");
+        String target;
+        if (state == null) {
+            target = String.format("%s/", host);
+        } else {
+            try {
+                var cipher = Cipher.getInstance("AES");
+                cipher.init(Cipher.DECRYPT_MODE, aesKey);
+                target = new String(cipher.doFinal(Base64.getUrlDecoder().decode(state)), StandardCharsets.UTF_8);
+            } catch (NoSuchPaddingException | InvalidKeyException | BadPaddingException | NoSuchAlgorithmException |
+                     IllegalBlockSizeException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        context.redirect(target);
+    }
+
     public void invalidateAllSessions() {
         alive.set(secureRandom.nextInt());
     }
 
     private static final String JWT_HEADER = Base64.getUrlEncoder().encodeToString("{\"typ\":\"JWT\",\"alg\":\"HS256\"}".getBytes(StandardCharsets.UTF_8));
 
-    private String userJwt(UUID userId, Set<Role> roles) {
+    private String userJwt(String idToken, UUID userId, Set<Role> roles) {
         ObjectNode node = mapper.createObjectNode();
         node.put("user", userId.toString());
+
+        node.put("id", idToken);
+
         var rolesNode = mapper.createArrayNode();
         for (var role : roles) {
             rolesNode.add(role.unique());
@@ -423,6 +501,14 @@ final class OIDCAuthenticator {
         }
     }
 
+    private @Nullable String recoverIdToken(String sessionJwt) {
+        var bodyJson = validateJwt(sessionJwt);
+        if (bodyJson == null) {
+            return null;
+        }
+        return bodyJson.get("id").asString();
+    }
+
     private Larder.@Nullable AuthInfo parseUserJwt(Context context, String sessionJwt) {
         var bodyJson = validateJwt(sessionJwt);
         if (bodyJson == null) {
@@ -440,7 +526,7 @@ final class OIDCAuthenticator {
         var now = Instant.now();
         if (expiration.isAfter(now.plus(5, ChronoUnit.MINUTES))) {
             // Token can be refreshed
-            var newToken = userJwt(userUUID, roles);
+            var newToken = userJwt(bodyJson.get("id").asString(), userUUID, roles);
             context.cookie(SESSION_TOKEN_COOKIE, newToken);
         }
         var userId = new User.Id(userUUID);

@@ -20,7 +20,6 @@ import io.javalin.openapi.plugin.OpenApiPlugin;
 import io.javalin.openapi.plugin.redoc.ReDocPlugin;
 import io.javalin.openapi.plugin.swagger.SwaggerPlugin;
 import io.pebbletemplates.pebble.PebbleEngine;
-import org.eclipse.jetty.http.MimeTypes;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,10 +91,13 @@ public class Larder {
             config.routes.exception(UnauthorizedResponse.class, (e, ctx) -> {
                 ctx.status(e.getStatus());
                 if (isHtml(ctx.header(Header.ACCEPT))) {
-                    oidcAuthenticator.fillLoginRedirect(ctx);
-                } else {
-                    ctx.json(new ApiError(HttpStatus.UNAUTHORIZED.getCode(), HttpStatus.UNAUTHORIZED.getMessage()));
+                    var userRoles = oidcAuthenticator.userRoles(ctx);
+                    if (userRoles.isEmpty()) {
+                        oidcAuthenticator.fillLoginRedirect(ctx);
+                        return;
+                    }
                 }
+                specializeError(ctx, new ApiError(HttpStatus.UNAUTHORIZED.getCode(), HttpStatus.UNAUTHORIZED.getMessage()));
             });
             config.routes.exception(HttpResponseException.class, (e, ctx) -> {
                 ctx.status(e.getStatus());
@@ -133,8 +135,12 @@ public class Larder {
             config.routes.apiBuilder(() -> {
                 // Redirected here after OIDC login
                 get("/login", oidcAuthenticator::handleLoginRedirect);
+                get("/logout", oidcAuthenticator::handleLogoutRequest);
+                get("/signin", oidcAuthenticator::requestLogin, Role.Builtin.USER);
 
                 path("/dashboard", List.of(Role.Builtin.USER), () -> {
+                    get("logout", oidcAuthenticator::requestLogout);
+
                     path("admin", List.of(Role.Builtin.ADMIN), () -> {
                         path("api", () -> {
                             get("users", ApiMethods::listUsers);
