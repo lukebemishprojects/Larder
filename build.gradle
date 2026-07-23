@@ -154,10 +154,17 @@ def testEnvMap = [
     LARDER_FILESYSTEM_BACKEND_LOCATIONS: "./dev-filesystem-backends.json"
 ]
 
+tasks.register("stopDevDocker", Exec) {
+    commandLine("docker", "compose", "-f", "docker-compose.dev.yml", "down")
+    workingDir = layout.projectDirectory
+    outputs.upToDateWhen { false }
+}
+
 tasks.register("startDevDocker", Exec) {
     commandLine("docker", "compose", "-f", "docker-compose.dev.yml", "up", "--remove-orphans", "--detach")
     workingDir = layout.projectDirectory
     outputs.upToDateWhen { false }
+    mustRunAfter tasks.stopDevDocker // Prevents anything depending on this from seeing invalid state
 }
 
 tasks.register("testDev", JavaExec) {
