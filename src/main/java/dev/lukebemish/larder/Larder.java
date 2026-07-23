@@ -20,11 +20,13 @@ import io.javalin.openapi.plugin.OpenApiPlugin;
 import io.javalin.openapi.plugin.redoc.ReDocPlugin;
 import io.javalin.openapi.plugin.swagger.SwaggerPlugin;
 import io.pebbletemplates.pebble.PebbleEngine;
+import org.eclipse.jetty.http.MimeTypes;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.StringWriter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -33,6 +35,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
@@ -50,7 +53,7 @@ public class Larder {
     private final boolean isDev;
     private final ModelConnection modelConnection;
     private final OIDCAuthenticator oidcAuthenticator;
-    private final PebbleEngine templateEngine;
+    final PebbleEngine templateEngine;
 
     private final int port;
 
@@ -67,12 +70,16 @@ public class Larder {
     private void start() throws SQLException {
         this.modelConnection.migrate(Schema.MIGRATIONS, Schema.CURRENT_VERSION);
 
+        var indices = new Indices(this);
+
         var app = Javalin.create(config -> {
             // Database
             config.events.serverStopping(this.modelConnection::closeConnection);
             config.appData(CONNECTION_KEY, this.modelConnection);
             config.appData(APPLICATION_KEY, this);
             config.appData(TEMPLATE_ENGINE_KEY, this.templateEngine);
+
+            var isNotLinked = isNotLinked();
 
             config.validation.register(UUID.class, UUID::fromString);
 
@@ -84,23 +91,21 @@ public class Larder {
             // Error handling
             config.routes.exception(UnauthorizedResponse.class, (e, ctx) -> {
                 ctx.status(e.getStatus());
-                var accept = ctx.header(Header.ACCEPT);
-                if (accept == null || (accept.contains(ContentType.HTML) || accept.contains("*/*") || accept.isEmpty())) {
+                if (isHtml(ctx.header(Header.ACCEPT))) {
                     oidcAuthenticator.fillLoginRedirect(ctx);
                 } else {
-                    ctx.json(new ApiError(HttpStatus.UNAUTHORIZED.getMessage()));
+                    ctx.json(new ApiError(HttpStatus.UNAUTHORIZED.getCode(), HttpStatus.UNAUTHORIZED.getMessage()));
                 }
             });
             config.routes.exception(HttpResponseException.class, (e, ctx) -> {
                 ctx.status(e.getStatus());
-                // TODO: non-JSON HTML-y response for other errors
-                ctx.json(new ApiError(e.getMessage(), e.getDetails()));
+                specializeError(ctx, new ApiError(e.getStatus(), e.getMessage(), e.getDetails()));
             });
             config.routes.exception(Exception.class, (e, ctx) -> {
-                // TODO: non-JSON HTML-y response for other errors
                 LOGGER.error("Internal server error", e);
                 ctx.status(HttpStatus.INTERNAL_SERVER_ERROR.getCode());
-                ctx.json(new ApiError(
+                specializeError(ctx, new ApiError(
+                    HttpStatus.INTERNAL_SERVER_ERROR.getCode(),
                     HttpStatus.INTERNAL_SERVER_ERROR.getMessage(),
                     isDev ? (e.getMessage() != null ? Map.of(
                         "message", e.getMessage(),
@@ -112,7 +117,7 @@ public class Larder {
             });
 
             config.registerPlugin(new OpenApiPlugin(pluginConfig -> {
-                pluginConfig.withDefinitionConfiguration((version, definition) -> {
+                pluginConfig.withDefinitionConfiguration((_, definition) -> {
                     definition.info(info -> info.title("Larder API"));
                 });
             }));
@@ -163,37 +168,81 @@ public class Larder {
             // Static files (dev + prod prefixes for indices styling and dashboard)
             // First, we unpack these files to temporary directories
 
-            var isInJar = isInJar();
             config.staticFiles.add(staticFiles -> {
                 staticFiles.hostedPath = "/dashboard";
-                staticFiles.location = isInJar ? Location.CLASSPATH : Location.EXTERNAL;
-                staticFiles.directory = unpackIfNeeded("/dev/lukebemish/larder/dashboard", isInJar);
+                staticFiles.location = isNotLinked ? Location.CLASSPATH : Location.EXTERNAL;
+                staticFiles.directory = unpackIfNeeded(Larder.class.getModule(), "/dev/lukebemish/larder/dashboard", isNotLinked);
                 staticFiles.roles = Set.of(Role.Builtin.USER);
             });
             config.staticFiles.add(staticFiles -> {
                 staticFiles.hostedPath = "/_internal";
-                staticFiles.location = isInJar ? Location.CLASSPATH : Location.EXTERNAL;
-                staticFiles.directory = unpackIfNeeded("/dev/lukebemish/larder/indices/_internal", isInJar);
+                staticFiles.location = isNotLinked ? Location.CLASSPATH : Location.EXTERNAL;
+                staticFiles.directory = unpackIfNeeded(Larder.class.getModule(), "/dev/lukebemish/larder/indices/_internal", isNotLinked);
                 staticFiles.roles = Set.of();
+            });
+
+            // Use of spa handler lets this run after static files
+            config.spaRoot.addHandler("/", ctx -> {
+                var path = normalizePath(ctx.path());
+                if (path.equals("/")) {
+                    indices.listRepositories(ctx);
+                    return;
+                }
+                var firstSlash = path.indexOf('/', 1);
+                var repositoryName = firstSlash == -1 ? path.substring(1) : path.substring(1,  firstSlash);
+                var rest = firstSlash == -1 ? "/" : path.substring(firstSlash);
+                indices.listAt(ctx, rest, repositoryName, firstSlash == -1);
             });
         }).start(port);
 
         Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
     }
 
-    private static boolean isInJar() {
+    private String normalizePath(String path) {
+        if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
+        while (path.length() > 1 && path.endsWith("/")) {
+            path = path.substring(0, path.length() - 1);
+        }
+        return path;
+    }
+
+    private static void specializeError(Context ctx, ApiError apiError) {
+        var accept = ctx.header(Header.ACCEPT);
+        if (isHtml(accept)) {
+            var template = ctx.appData(TEMPLATE_ENGINE_KEY).getTemplate("error-page.html");
+            var writer = new StringWriter();
+            try {
+                template.evaluate(writer, Map.of(
+                    "error", apiError
+                ), Locale.ROOT);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            ctx.html(writer.toString());
+        } else {
+            ctx.json(apiError);
+        }
+    }
+
+    private static boolean isHtml(@Nullable String accept) {
+        return accept == null || (accept.contains(ContentType.HTML) || accept.contains("*/*") || accept.isEmpty());
+    }
+
+    private static boolean isNotLinked() {
         var url = Larder.class.getResource("/"+Larder.class.getName().replace('.', '/')+".class");
         return url != null && Objects.equals(url.getProtocol(), "jar");
     }
 
-    private static String unpackIfNeeded(String path, boolean isInJar) {
+    private static String unpackIfNeeded(Module module, String path, boolean isInJar) {
         if (isInJar) {
             return path;
         }
         else {
             var trimmedPath = path.startsWith("/") ? path.substring(1) : path;
-            try (var moduleReader = Larder.class.getModule().getLayer().configuration().modules().stream()
-                .filter(it -> it.name().equals(Larder.class.getModule().getName()))
+            try (var moduleReader = module.getLayer().configuration().modules().stream()
+                .filter(it -> it.name().equals(module.getName()))
                 .findAny()
                 .orElseThrow()
                 .reference()
@@ -206,7 +255,7 @@ public class Larder {
                     if (relPath.startsWith("/")) {
                         relPath = relPath.substring(1);
                     }
-                    try (var rStream = Larder.class.getModule().getResourceAsStream("/"+resourcePath)) {
+                    try (var rStream = module.getResourceAsStream("/"+resourcePath)) {
                         var target = tempDir.resolve(relPath);
                         Files.createDirectories(target.getParent());
                         Files.copy(rStream, target, StandardCopyOption.REPLACE_EXISTING);

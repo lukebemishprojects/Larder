@@ -28,5 +28,6 @@ module dev.lukebemish.larder {
     // JSON Expression Parsing (for OIDC-based role expressions)
     requires JSONata4Java;
 
-    opens dev.lukebemish.larder.api to tools.jackson.databind;
+    opens dev.lukebemish.larder.api to tools.jackson.databind, io.pebbletemplates;
+    opens dev.lukebemish.larder.template to io.pebbletemplates;
 }

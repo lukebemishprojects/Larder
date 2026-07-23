@@ -46,7 +46,7 @@ export function App(props: { entries: AppEntry[] }) {
             <ErrorBoundary fallback={(error) => {
                 console.error(error);
                 return (<OuterBox>
-                    <div class="text-red-600 p-5">
+                    <div class="bg-red-300 text-red-800 p-5 rounded-md">
                         Error: {error.message}
                     </div>
                 </OuterBox>)

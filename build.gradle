@@ -99,6 +99,11 @@ modularize {
 
 def modulesToAdd = [
     "jjwt.impl",
+
+    // npm webjars, jdeps doesn't create deps on these
+    "swagger.ui",
+    "redoc",
+    "js.tokens"
 ]
 
 tasks.named('compileJava', JavaCompile) {
