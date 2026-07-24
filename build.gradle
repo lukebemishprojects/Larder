@@ -1,3 +1,5 @@
+import dev.lukebemish.larder.buildtooling.JLinkTask
+
 plugins {
     id 'java'
     id 'build-logic-conventions'
@@ -115,7 +117,7 @@ tasks.named('compileJava', JavaCompile) {
 }
 
 
-tasks.register("jpackage", dev.lukebemish.larder.buildtooling.JPackageTask) {
+tasks.register("jlink", JLinkTask) {
     javaCompiler = javaToolchains.compilerFor {
         languageVersion = JavaLanguageVersion.of(25)
         vendor = JvmVendorSpec.AMAZON
@@ -123,8 +125,7 @@ tasks.register("jpackage", dev.lukebemish.larder.buildtooling.JPackageTask) {
     modulePath.from(configurations.applicationClasspath)
     mainModule = "dev.lukebemish.larder"
     imageName = project.name
-    imageVersion = project.version as String
-    destinationDirectory = layout.buildDirectory.dir("jpackage")
+    destinationDirectory = layout.buildDirectory.dir("jlink")
     addModules = modulesToAdd
 }
 
@@ -182,11 +183,13 @@ tasks.register("testDev", JavaExec) {
     outputs.upToDateWhen { false }
 }
 
-tasks.register("testJPackage", Exec) {
+tasks.register("testJlink", JavaExec) {
     environment(testEnvMap)
     workingDir = layout.projectDirectory
-    executable = layout.buildDirectory.file("jpackage/larder/bin/larder").get()
+    mainModule = "dev.lukebemish.larder"
+    executable = layout.buildDirectory.file("jlink/larder/bin/java").get()
     dependsOn tasks.startDevDocker
-    dependsOn tasks.jpackage
+    dependsOn tasks.jlink
     outputs.upToDateWhen { false }
 }
+

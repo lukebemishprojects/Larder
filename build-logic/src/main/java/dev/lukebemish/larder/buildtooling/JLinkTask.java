@@ -22,9 +22,13 @@ import org.gradle.process.ExecOperations;
 
 import javax.inject.Inject;
 
-public abstract class JPackageTask extends DefaultTask {
+public abstract class JLinkTask extends DefaultTask {
     @Inject
-    public JPackageTask() {}
+    public JLinkTask() {
+        getModulePath().from(
+            getJavaCompiler().map(it -> it.getMetadata().getInstallationPath().dir("jmods"))
+        );
+    }
 
     @Nested
     public abstract Property<JavaCompiler> getJavaCompiler();
@@ -44,9 +48,6 @@ public abstract class JPackageTask extends DefaultTask {
 
     @Input
     public abstract Property<String> getImageName();
-
-    @Input
-    public abstract Property<String> getImageVersion();
 
     @Inject
     protected abstract ExecOperations getExecOperations();
@@ -72,29 +73,17 @@ public abstract class JPackageTask extends DefaultTask {
         });
 
         getExecOperations().exec(spec -> {
-            spec.executable(ConventionPlugin.getBinaryPath(getJavaCompiler().get(), "jpackage"));
+            spec.executable(ConventionPlugin.getBinaryPath(getJavaCompiler().get(), "jlink"));
             spec.args(
-                "--type", "app-image",
-                "-d", getDestinationDirectory().get().getAsFile().getAbsolutePath(),
-                "-n", getImageName().get(),
-                "--app-version", getImageVersion().get(),
-                "-p", getModulePath().getAsPath(),
-                "-p", getJavaCompiler().get().getMetadata().getInstallationPath().dir("jmods").getAsFile().getAbsolutePath(),
-                "-m", getMainModule().get(),
+                "--output", getBundleDirectory().get().getAsFile().getAbsolutePath(),
+                "--module-path", getModulePath().getAsPath(),
+                "--add-modules", getMainModule().get(),
 
-                // By default, would have "--strip-debug"; modified to keep debug info
-                // Also needs "--bind-services" or service impls won't be bundled
-                "--jlink-options", "--strip-native-commands --no-man-pages --no-header-files --bind-services --compress=zip-9",
+                "--generate-cds-archive", "--no-man-pages", "--no-header-files", "--bind-services", "--compress=zip-9",
 
-                // Must be specified both for jlink and for launching the application
                 "--add-modules", String.join(",", getAddModules().get()),
-                "--java-options", "--add-modules="+String.join(",", getAddModules().get())
+                "--add-options=--add-modules="+String.join(",", getAddModules().get())
             );
-            for (var mod : getAddModules().get()) {
-                spec.args(
-                    "--add-modules", mod
-                );
-            }
         });
     }
 }
