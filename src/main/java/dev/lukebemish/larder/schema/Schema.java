@@ -56,7 +56,7 @@ public class Schema {
                     FOREIGN KEY (id) REFERENCES repositorybackends (id)
                 );
 
-                CREATE TABLE IF NOT EXISTS filesystembackeds (
+                CREATE TABLE IF NOT EXISTS filesystembackends (
                     id uuid NOT NULL,
                     location varchar NOT NULL,
                     PRIMARY KEY (id),
@@ -102,7 +102,7 @@ public class Schema {
                     prefix varchar NOT NULL,
                     PRIMARY KEY (repository),
                     FOREIGN KEY (repository) REFERENCES repositories (name),
-                    FOREIGN KEY (backend) REFERENCES filesystembackeds (id)
+                    FOREIGN KEY (backend) REFERENCES filesystembackends (id)
                 );
                 """)
             .downgrade(1, """

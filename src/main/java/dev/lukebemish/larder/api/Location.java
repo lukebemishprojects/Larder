@@ -2,15 +2,13 @@ package dev.lukebemish.larder.api;
 
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
-import tools.jackson.core.JsonGenerator;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.DeserializationContext;
-import tools.jackson.databind.SerializationContext;
 import tools.jackson.databind.ValueDeserializer;
-import tools.jackson.databind.ValueSerializer;
 import tools.jackson.databind.annotation.JsonDeserialize;
 import tools.jackson.databind.annotation.JsonSerialize;
+import tools.jackson.databind.exc.UnrecognizedPropertyException;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.lang.classfile.ClassFile;
@@ -22,6 +20,7 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.AccessFlag;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 
 import static java.lang.constant.ConstantDescs.*;
@@ -38,7 +37,7 @@ import static java.lang.constant.ConstantDescs.*;
  * This type is designed such that it is impossible to create an instance of it other than those defined through the
  * provided file; other locations simply cannot be represented.
  */
-@JsonSerialize(using = LocationSerializer.class)
+@JsonSerialize(as = Locations.class)
 @JsonDeserialize(using = LocationDeserializer.class)
 public sealed interface Location permits Locations {
     String name();
@@ -103,6 +102,10 @@ final class LocationsInitializer {
             clazz.withField("location", Path.class.describeConstable().orElseThrow(), f -> f.withFlags(AccessFlag.PRIVATE, AccessFlag.FINAL));
             clazz.withField("$VALUES", self.arrayType(), f -> f.withFlags(AccessFlag.PRIVATE, AccessFlag.FINAL, AccessFlag.SYNTHETIC, AccessFlag.STATIC));
 
+            for (var entry : locations.entrySet()) {
+                clazz.withField(entry.getKey(), self, f -> f.withFlags(AccessFlag.PUBLIC, AccessFlag.FINAL, AccessFlag.STATIC));
+            }
+
             clazz.withMethod("values", MethodTypeDesc.of(self.arrayType()), ClassFile.ACC_STATIC | ClassFile.ACC_PUBLIC, method -> {
                 method.withCode(code -> {
                     code.getstatic(self, "$VALUES", self.arrayType());
@@ -162,6 +165,8 @@ final class LocationsInitializer {
                         code.loadConstant(i);
                         code.loadConstant(entry.getValue());
                         code.invokespecial(self, "<init>", mtdInit);
+                        code.dup();
+                        code.putstatic(self, entry.getKey(), self);
                         code.aastore();
                         i++;
                     }
@@ -190,14 +195,12 @@ final class LocationDeserializer extends ValueDeserializer<Location> {
     @Override
     public Location deserialize(JsonParser p, DeserializationContext ctxt) throws JacksonException {
         LocationsInitializer.checkFailure();
-        return ctxt.readValue(p, LocationsInitializer.LOCATIONS);
-    }
-}
-
-final class LocationSerializer extends ValueSerializer<Location> {
-    @Override
-    public void serialize(Location value, JsonGenerator gen, SerializationContext ctxt) throws JacksonException {
-        ctxt.writeValue(gen, value);
+        var string = ctxt.readValue(p, String.class);
+        try {
+            return Location.valueOf(string);
+        } catch (IllegalArgumentException e) {
+            throw UnrecognizedPropertyException.from(p, LocationsInitializer.LOCATIONS, string, Arrays.stream(Location.values()).<Object>map(Location::name).toList());
+        }
     }
 }
 

@@ -5,6 +5,7 @@ import * as api from './api';
 import { createContext, createEffect, createResource, createSignal, ErrorBoundary, For, Setter, Show, Accessor, useContext } from 'solid-js';
 import { BoxInside, BoxWithHeader, Button, InnerElement, InnerHoverElements, OuterBox, TextInput, TextInputGroup } from './boxes';
 import { Dropdown } from './Dropdown';
+import { z } from 'zod';
 import { orErrorSignal, OrError } from './utils';
 import { createStore, SetStoreFunction, unwrap } from 'solid-js/store';
 
@@ -153,7 +154,7 @@ interface BackendsAvailable {
 }
 const BackendsAvailable = createContext<BackendsAvailable>();
 
-function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, value: api.Repository, s3set: SetStoreFunction<api.S3BackendConfiguration>, s3value: api.S3BackendConfiguration, backendType: Accessor<api.BackendConfiguration["type"] | undefined>, setBackendType: Setter<api.BackendConfiguration["type"] | undefined> }) {
+function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, value: api.Repository, s3set: SetStoreFunction<api.S3BackendConfiguration>, s3value: api.S3BackendConfiguration, filesystemset: SetStoreFunction<api.FilesystemBackendConfiguration>, filesystemvalue: api.FilesystemBackendConfiguration, backendType: Accessor<api.BackendConfiguration["type"] | undefined>, setBackendType: Setter<api.BackendConfiguration["type"] | undefined> }) {
     const context = useContext(BackendsAvailable)!;
 
     return (
@@ -222,6 +223,9 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                 <TextInput type="text" placeholder="S3 bucket" value={props.s3value.bucket} onchange={(v) => {props.s3set("bucket", v)}} />
                 <TextInput type="text" placeholder="Prefix in bucket" value={props.s3value.prefix} onchange={(v) => {props.s3set("prefix", v)}} />
             </Show>
+            <Show when={props.backendType() == "filesystembackend"}>
+                <TextInput type="text" placeholder="Prefix in filesystem" value={props.filesystemvalue.prefix} onchange={(v) => {props.filesystemset("prefix", v)}} />
+            </Show>
         </div>
     );
 }
@@ -231,15 +235,17 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
 
     const [ toSet, setToSet ] = createStore({
         ...props.repository,
-        s3backend: undefined
+        s3backend: undefined,
+        filesystembackend: undefined
     } as api.Repository);
     const [ backendType, setBackendType ] = createSignal<api.BackendConfiguration["type"] | undefined>(context.backends.find((b) => b.id == props.repository.backend)?.type);
     const [ toSetS3, setToSetS3 ] = createStore(props.repository.s3backend ? { ...props.repository.s3backend! } : api.newS3BackendConfiguration());
+    const [ toSetFilesystem, setToSetFilesystem ] = createStore(props.repository.filesystembackend ? { ...props.repository.filesystembackend! } : api.newFilesystemBackendConfiguration());
     const [ isDeleting, setIsDeleting ] = createSignal(false);
     const isDirty = () => {
         let key: keyof api.Repository;
         for (key in props.repository) {
-            if (key == "s3backend") {
+            if (key == "s3backend" || key == "filesystembackend") {
                 continue;
             }
             if (toSet[key] != props.repository[key]) {
@@ -250,6 +256,13 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
             let s3key: keyof api.S3BackendConfiguration;
             for (s3key in props.repository.s3backend!) {
                 if (toSetS3[s3key] != props.repository.s3backend![s3key]) {
+                    return true;
+                }
+            }
+        } else if (backendType() == "filesystembackend") {
+            let filesystemkey: keyof api.FilesystemBackendConfiguration;
+            for (filesystemkey in props.repository.filesystembackend!) {
+                if (toSetFilesystem[filesystemkey] != props.repository.filesystembackend![filesystemkey]) {
                     return true;
                 }
             }
@@ -264,14 +277,16 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
         </div>
         <>
             <InnerElement>
-                <RepositorySettings value={toSet} set={setToSet} s3value={toSetS3} s3set={setToSetS3} backendType={backendType} setBackendType={setBackendType} />
+                <RepositorySettings value={toSet} set={setToSet} s3value={toSetS3} s3set={setToSetS3} filesystemvalue={toSetFilesystem} filesystemset={setToSetFilesystem} backendType={backendType} setBackendType={setBackendType} />
             </InnerElement>
             <InnerElement>
                 <div class="flex flex-row gap-2.5 w-full items-center">
                     <Button disabled={!isDirty()} onclick={async () => {
-                        const current: api.Repository = { ...unwrap(toSet), s3backend: undefined }
+                        const current: api.Repository = { ...unwrap(toSet), s3backend: undefined, filesystembackend: undefined }
                         if (backendType() === "s3backend") {
                             current.s3backend = { ...unwrap(toSetS3) };
+                        } else if (backendType() === "filesystembackend") {
+                            current.filesystembackend = {...unwrap(toSetFilesystem)}
                         }
                         if (!api.validateRepository(current, setStatus)) {
                             return;
@@ -301,6 +316,9 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
                             setToSetS3(props.repository.s3backend ? {
                                 ...props.repository.s3backend!
                             } : api.newS3BackendConfiguration());
+                            setToSetFilesystem(props.repository.filesystembackend ? {
+                                ...props.repository.filesystembackend!
+                            } : api.newFilesystemBackendConfiguration());
                             setBackendType(context.backends.find((b) => b.id == props.repository.backend)?.type);
                         }
                     }} disabled={!isDirty() && !isDeleting()}>
@@ -343,6 +361,7 @@ export function RepositoriesList() {
     const [ toCreate, setToCreate ] = createStore(api.newRepository());
     const [ backendType, setBackendType ] = createSignal<api.BackendConfiguration["type"] | undefined>(undefined);
     const [ toCreateS3, setToCreateS3 ] = createStore(api.newS3BackendConfiguration());
+    const [ toCreateFilesystem, setToCreateFilesystem ] = createStore(api.newFilesystemBackendConfiguration());
     const [ status, setStatus ] = orErrorSignal();
     const [ backends ] = createResource(async () => {
         return await api.fetchJSON('/dashboard/admin/api/backends', api.Backends);
@@ -360,9 +379,11 @@ export function RepositoriesList() {
                 <div class="shadow-sm"><TextInputGroup type="text" accessor={() => toCreate.name} setter={(value: string) => {
                     setToCreate("name", value);
                 }} placeholder="Create repository" submit="Create" onsubmit={async () => {
-                    const current: api.Repository = { ...unwrap(toCreate), s3backend: undefined }
+                    const current: api.Repository = { ...unwrap(toCreate), s3backend: undefined, filesystembackend: undefined }
                     if (backendType() == "s3backend") {
                         current.s3backend = { ...unwrap(toCreateS3) };
+                    } else if (backendType() == "filesystembackend") {
+                        current.filesystembackend = {...unwrap(toCreateFilesystem)};
                     }
 
                     if (!api.validateRepository(current, setStatus)) {
@@ -375,6 +396,7 @@ export function RepositoriesList() {
                     }
                     setToCreate(api.newRepository());
                     setToCreateS3(api.newS3BackendConfiguration());
+                    setToCreateFilesystem(api.newFilesystemBackendConfiguration());
                     setStatus({ status: "working" });
                     mutate((repositories) => {
                         return repositories === undefined ? undefined : [...repositories, current];
@@ -391,7 +413,7 @@ export function RepositoriesList() {
                 }} /></div>
                 <BoxInside>
                     <InnerElement>
-                        <RepositorySettings value={toCreate} set={setToCreate} s3value={toCreateS3} s3set={setToCreateS3} backendType={backendType} setBackendType={setBackendType} />
+                        <RepositorySettings value={toCreate} set={setToCreate} s3value={toCreateS3} s3set={setToCreateS3} filesystemvalue={toCreateFilesystem} filesystemset={setToCreateFilesystem} backendType={backendType} setBackendType={setBackendType} />
                         <OrError get={status} />
                     </InnerElement>
                 </BoxInside>
@@ -405,7 +427,7 @@ export function RepositoriesList() {
     </ErrorBoundary>)
 }
 
-function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: SetStoreFunction<api.BackendConfiguration>, toSetS3: api.S3Backend, setToSetS3: SetStoreFunction<api.S3Backend> }) {
+function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: SetStoreFunction<api.BackendConfiguration>, toSetS3: api.S3Backend, setToSetS3: SetStoreFunction<api.S3Backend>, toSetFilesystem: api.FilesystemBackend, setToSetFilesystem: SetStoreFunction<api.FilesystemBackend> }) {
     createEffect(() => {
         if (props.toSet.type == "s3backend") {
             if (props.toSet.s3backend === undefined) {
@@ -414,6 +436,18 @@ function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: Set
         } else {
             props.setToSet("s3backend", undefined);
         }
+
+        if (props.toSet.type == "filesystembackend") {
+            if (props.toSet.s3backend === undefined) {
+                props.setToSet("filesystembackend", api.newFilesystemBackend());
+            }
+        } else {
+            props.setToSet("filesystembackend", undefined);
+        }
+    });
+
+    const [filesystemLocations] = createResource(async () => {
+        return await api.fetchJSON(`/dashboard/admin/api/backends/filesystem`, z.array(z.string()));
     });
 
     return (
@@ -430,6 +464,29 @@ function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: Set
                             props.setToSetS3("secretaccesskey", undefined);
                         }
                     }} />
+                </div>
+            </Show>
+            <Show when={props.toSet.type == "filesystembackend" && filesystemLocations()}>
+                <div class="block flex flex-col gap-2">
+                    <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={filesystemLocations()!.map((location) => {
+                        return {
+                            value: <div class="flex flex-row gap-2.5 w-full items-center">
+                                <div>{location}</div>
+                                <div class="flex-1"></div>
+                            </div>,
+                            action: async () => {
+                                props.setToSetFilesystem("location", location)
+                            }
+                        }
+                    })}>
+                        {props.toSetFilesystem.location ? <div class="flex flex-row gap-2.5 w-full items-center">
+                            <div>{props.toSetFilesystem.location}</div>
+                            <div class="flex-1"></div>
+                        </div> : "Select location"}
+                        <svg class="-mr-1 size-5 text-slate-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" data-slot="icon">
+                            <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+                        </svg>
+                    </Dropdown>
                 </div>
             </Show>
         </div>
@@ -457,6 +514,7 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                     ...item()
                 });
                 const [ toSetS3, setToSetS3 ] = createStore<api.S3Backend>(item().s3backend ? { ...item().s3backend! } : api.newS3Backend());
+                const [ toSetFilesystem, setToSetFilesystem ] = createStore<api.FilesystemBackend>(item().filesystembackend ? { ...item().filesystembackend! } : api.newFilesystemBackend());
                 const isDirty = () => {
                     if (item().type != toSet.type) {
                         return true;
@@ -473,6 +531,14 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                             }
                         }
                     }
+                    if (type == "filesystembackend") {
+                        let key: keyof api.FilesystemBackend;
+                        for (key in item().filesystembackend) {
+                            if (toSetFilesystem[key] != item().filesystembackend![key]) {
+                                return true;
+                            }
+                        }
+                    }
                     return false;
                 }
                 return <BoxWithHeader>
@@ -483,7 +549,7 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                     </div>
                     <>
                         <InnerElement>
-                            <BackendContents toSet={toSet} setToSet={setToSet} toSetS3={toSetS3} setToSetS3={setToSetS3} />
+                            <BackendContents toSet={toSet} setToSet={setToSet} toSetS3={toSetS3} setToSetS3={setToSetS3} toSetFilesystem={toSetFilesystem} setToSetFilesystem={setToSetFilesystem} />
                         </InnerElement>
                         <InnerElement>
                             <div class="flex flex-row gap-2.5 w-full items-center">
@@ -493,6 +559,9 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                                     if (current.type == "s3backend") {
                                         current.s3backend = { ...unwrap(toSetS3) };
                                         setToSetS3("secretaccesskey", undefined);
+                                    }
+                                    if (current.type == "filesystembackend") {
+                                        current.filesystembackend = { ...unwrap(toSetFilesystem) };
                                     }
                                     try {
                                         await api.postJSON(`/dashboard/admin/api/backends/${props.backend.id}`, current);
@@ -512,6 +581,11 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                                     }
                                     if (isDirty()) {
                                         setToSet({ ...item() });
+                                        if (item().type == "s3backend") {
+                                            setToSetS3({...item().s3backend})
+                                        } else if (item().type == "filesystembackend") {
+                                            setToSetFilesystem({...item().filesystembackend})
+                                        }
                                     }
                                 }} disabled={!isDirty() && !isDeleting()}>
                                     Cancel
@@ -558,6 +632,7 @@ export function BackendsList() {
     })
     const [ toCreate, setToCreate ] = createStore(api.newBackendConfiguration());
     const [ toCreateS3, setToCreateS3 ] = createStore<api.S3Backend>(api.newS3Backend());
+    const [ toCreateFilesystem, setToCreateFilesystem ] = createStore<api.FilesystemBackend>(api.newFilesystemBackend());
     const [ status, setStatus ] = orErrorSignal();
 
     const possibleTypes: api.BackendConfiguration["type"][] = api.BackendConfiguration.shape.type.options;
@@ -588,9 +663,12 @@ export function BackendsList() {
                     const current = { ...unwrap(toCreate) }
                     if (current.type == "s3backend") {
                         current.s3backend = { ...unwrap(toCreateS3) };
+                    } else if (current.type == "filesystembackend") {
+                        current.filesystembackend = {...unwrap(toCreateFilesystem)};
                     }
                     setToCreate(api.newBackendConfiguration());
                     setToCreateS3(api.newS3Backend());
+                    setToCreateFilesystem(api.newFilesystemBackend());
                     setStatus({ status: "working" });
                     try {
                         await api.postJSON(`/dashboard/admin/api/backends`, current);
@@ -608,7 +686,7 @@ export function BackendsList() {
             </div>
             <BoxInside>
                 <InnerElement>
-                    <BackendContents toSet={toCreate} setToSet={setToCreate} toSetS3={toCreateS3} setToSetS3={setToCreateS3} />
+                    <BackendContents toSet={toCreate} setToSet={setToCreate} toSetS3={toCreateS3} setToSetS3={setToCreateS3} toSetFilesystem={toCreateFilesystem} setToSetFilesystem={setToCreateFilesystem} />
                     <OrError get={status} />
                 </InnerElement>
             </BoxInside>

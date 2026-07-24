@@ -146,19 +146,20 @@ public class Larder {
                             get("users", ApiMethods::listUsers);
                             get("repositories", ApiMethods::listRepositories);
                             get("repositories/{repositoryName}", ApiMethods::getRepository);
-                            get("backends", ApiMethods::listBackends);
-                            get("backends/{id}", ApiMethods::getBackend);
+                            get("backends", ApiMethodsBackend::listBackends);
+                            get("backends/filesystem", ApiMethodsBackend::listFilesystemLocations);
+                            get("backends/{id}", ApiMethodsBackend::getBackend);
 
                             delete("repositories/{repositoryName}", ApiMethods::removeRepository);
-                            delete("backends/{id}", ApiMethods::removeBackend);
+                            delete("backends/{id}", ApiMethodsBackend::removeBackend);
 
                             post("namespaces/{user}/create/{namespace}", ApiMethods::addNamespace);
                             post("namespaces/{user}/confirm/{namespace}", ApiMethods::confirmNamespace);
                             post("namespaces/{user}/delete/{namespace}", ApiMethods::removeNamespace);
 
                             post("repositories/{repositoryName}", ApiMethods::updateRepository);
-                            post("backends/{id}", ApiMethods::updateBackend);
-                            post("backends", ApiMethods::createBackend);
+                            post("backends/{id}", ApiMethodsBackend::updateBackend);
+                            post("backends", ApiMethodsBackend::createBackend);
                         });
                     });
                     path("api", () -> {

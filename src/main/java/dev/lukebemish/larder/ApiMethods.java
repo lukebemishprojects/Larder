@@ -1,9 +1,7 @@
 package dev.lukebemish.larder;
 
 import dev.lukebemish.larder.api.ApiError;
-import dev.lukebemish.larder.api.ApiIdentifyingSuccess;
 import dev.lukebemish.larder.api.ApiSuccess;
-import dev.lukebemish.larder.api.RepositoryBackendApi;
 import dev.lukebemish.larder.api.RepositoryApi;
 import dev.lukebemish.larder.api.RepositoryBackendType;
 import dev.lukebemish.larder.api.UserApi;
@@ -11,6 +9,8 @@ import dev.lukebemish.larder.api.UserCapability;
 import dev.lukebemish.larder.api.UserNamespaceApi;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.ModelConnection;
+import dev.lukebemish.larder.schema.FilesystemBackend;
+import dev.lukebemish.larder.schema.FilesystemBackendConfiguration;
 import dev.lukebemish.larder.schema.Repository;
 import dev.lukebemish.larder.schema.RepositoryBackend;
 import dev.lukebemish.larder.schema.RepositoryIndex;
@@ -44,18 +44,6 @@ final class ApiMethods {
 
     static final UUID UUID_ISS = UUID.fromString("f26ee10c-dfd1-4aff-99f2-03140ad59e46");
 
-    public static User newUser(ModelConnection connection, User user) throws SQLException {
-        return connection.transact(c -> {
-            var existing = c.find(Identifier.of(user));
-            if (existing.isEmpty()) {
-                c.insert(user);
-            } else {
-                c.update(user);
-            }
-            return c.select(Identifier.of(user));
-        });
-    }
-
     @OpenApi(
         path = "/dashboard/api/whoami",
         methods = HttpMethod.GET,
@@ -75,11 +63,17 @@ final class ApiMethods {
 
     public static User.Id authenticatedUser(Context context) {
         Larder.AuthInfo identity = context.attribute(Larder.AUTH_INFO_KEY);
+        if (identity == null) {
+            throw new UnauthorizedResponse();
+        }
         return Objects.requireNonNull(Objects.requireNonNull(identity).user());
     }
 
     public static Set<Role> authenticatedRoles(Context context) {
         Larder.AuthInfo identity = context.attribute(Larder.AUTH_INFO_KEY);
+        if (identity == null) {
+            return Set.of();
+        }
         return Objects.requireNonNull(Objects.requireNonNull(identity).roles());
     }
 
@@ -154,13 +148,13 @@ final class ApiMethods {
         );
     }
 
-    private static void adminOrSelf(Context context, UUID uuid) throws SQLException {
+    public static void adminOrSelf(Context context, UUID uuid) {
         if (!authenticatedRoles(context).contains(Role.Builtin.ADMIN) && !authenticatedUser(context).id().equals(uuid)) {
             throw new UnauthorizedResponse();
         }
     }
 
-    private static ModelConnection connection(Context context) {
+    public static ModelConnection connection(Context context) {
         return context.appData(Larder.CONNECTION_KEY);
     }
 
@@ -230,64 +224,6 @@ final class ApiMethods {
     }
 
     @OpenApi(
-        path = "/dashboard/admin/api/backends",
-        methods = HttpMethod.GET,
-        summary = "List repository backends",
-        responses = @OpenApiResponse(
-            status = "200",
-            content = @OpenApiContent(
-                from = RepositoryBackendApi[].class
-            ),
-            description = "Available backends"
-        )
-    )
-    public static void listBackends(Context context) throws SQLException {
-        connection(context).transact(c -> {
-            context.json(
-                c.select(RepositoryBackend.REPRESENTATION)
-                    .stream().map(b -> {
-                        try {
-                            return RepositoryBackendApi.from(b, c);
-                        } catch (SQLException e) {
-                            throw new RuntimeException(e);
-                        }
-                    }).toList()
-            );
-        });
-    }
-
-    @OpenApi(
-        path = "/dashboard/admin/api/backends/{id}",
-        pathParams = @OpenApiParam(
-            name = "id",
-            type = UUID.class
-        ),
-        methods = HttpMethod.GET,
-        summary = "Get backend and configuration data",
-        responses = {
-            @OpenApiResponse(
-                status = "200",
-                content = @OpenApiContent(from = RepositoryBackendApi.class),
-                description = "The backend"
-            ),
-            @OpenApiResponse(status = "404", description = "Backend not found", content = @OpenApiContent(from = ApiError.class))
-        }
-    )
-    public static void getBackend(Context context) throws SQLException {
-        var backendId = context.pathParamAsClass("id", UUID.class)
-            .getOrThrow(m -> new BadRequestResponse("Not a UUID: "+m.get("value")));
-        context.json(connection(context).transact(connection -> {
-            var backend = connection.find(Identifier.of(new RepositoryBackend.Id(backendId)));
-
-            if (backend.isEmpty()) {
-                throw new NotFoundResponse("Backend not found");
-            }
-
-            return RepositoryBackendApi.from(backend.get(), connection);
-        }));
-    }
-
-    @OpenApi(
         path = "/dashboard/admin/api/repositories/{repositoryName}",
         pathParams = @OpenApiParam(
             name = "repositoryName"
@@ -315,47 +251,11 @@ final class ApiMethods {
             }
             var backend  = connection.select(found.get().backend());
             switch (backend.type()) {
-                case RepositoryBackendType.S3 -> {
-                    connection.delete(Identifier.of(new S3BackendConfiguration.Id(id)));
-                }
+                case RepositoryBackendType.S3 -> connection.delete(Identifier.of(new S3BackendConfiguration.Id(id)));
+                case RepositoryBackendType.FILESYSTEM -> connection.delete(Identifier.of(new FilesystemBackendConfiguration.Id(id)));
             }
             connection.delete(new RepositoryIndex.ByRepository(id));
             connection.delete(id);
-            context.status(HttpStatus.NO_CONTENT);
-        });
-    }
-
-    @OpenApi(
-        path = "/dashboard/admin/api/backends/{id}",
-        pathParams = @OpenApiParam(
-            name = "id",
-            type = UUID.class
-        ),
-        methods = HttpMethod.DELETE,
-        summary = "Remove backend",
-        responses = {
-            @OpenApiResponse(
-                status = "204",
-                description = "Backend deleted"
-            ),
-            @OpenApiResponse(status = "404", description = "Backend not found", content = @OpenApiContent(from = ApiError.class))
-        }
-    )
-    public static void removeBackend(Context context) throws SQLException {
-        var backendUUID = context.pathParamAsClass("id", UUID.class)
-            .getOrThrow(m -> new BadRequestResponse("Not a UUID: "+m.get("value")));
-        connection(context).transact(connection -> {
-            var backendId = Identifier.of(new RepositoryBackend.Id(backendUUID));
-            var inUse = connection.select(new Repository.ByBackend(backendId));
-            if (!inUse.isEmpty()) {
-                throw new BadRequestResponse("Cannot delete backend still in use by repositories");
-            }
-            var found = connection.find(backendId);
-            if (found.isEmpty()) {
-                throw new  NotFoundResponse("Backend not found");
-            }
-            connection.delete(Identifier.of(new S3Backend.Id(backendId)));
-            connection.delete(backendId);
             context.status(HttpStatus.NO_CONTENT);
         });
     }
@@ -525,9 +425,8 @@ final class ApiMethods {
                 if (!existing.get().backend().equals(backendId)) {
                     var backendActual = c.select(existing.get().backend());
                     switch (backendActual.type()) {
-                        case RepositoryBackendType.S3 -> {
-                            c.delete(Identifier.of(new S3BackendConfiguration.Id(repositoryId)));
-                        }
+                        case RepositoryBackendType.S3 -> c.delete(Identifier.of(new S3BackendConfiguration.Id(repositoryId)));
+                        case RepositoryBackendType.FILESYSTEM -> c.delete(Identifier.of(new FilesystemBackendConfiguration.Id(repositoryId)));
                     }
                 }
             }
@@ -549,109 +448,24 @@ final class ApiMethods {
                         c.update(config);
                     }
                 }
-            }
-            context.json(new ApiSuccess());
-        });
-    }
-
-    @OpenApi(
-        path = "/dashboard/admin/api/backends/{id}",
-        pathParams = @OpenApiParam(name = "id", type = UUID.class),
-        methods = HttpMethod.POST,
-        summary = "Update repository backend",
-        responses = {
-            @OpenApiResponse(
-                status = "200",
-                description = "Backend updated",
-                content = @OpenApiContent(from = ApiSuccess.class)
-            ),
-            @OpenApiResponse(status = "404", description = "Existing repository backend configuration not found", content = @OpenApiContent(from = ApiError.class)),
-        },
-        requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = RepositoryBackendApi.class), required = true)
-    )
-    public static void updateBackend(Context context) throws SQLException {
-        var backendUUID = context.pathParamAsClass("id", UUID.class)
-            .getOrThrow(m -> new BadRequestResponse("Not a UUID: "+m.get("value")));
-        var backendId = Identifier.of(new RepositoryBackend.Id(backendUUID));
-        connection(context).transact(c -> {
-            var existing = c.find(backendId);
-            if (existing.isEmpty()) {
-                throw new NotFoundResponse("Backend not found");
-            }
-            var backend = context.bodyAsClass(RepositoryBackendApi.class);
-            if (backend.id() != null && !backend.id().equals(backendUUID)) {
-                throw new BadRequestResponse("Backend id does not match");
-            }
-            if (existing.get().type() != backend.type()) {
-                throw new BadRequestResponse("Backend type cannot be changed");
-            }
-            switch (backend.type()) {
-                case RepositoryBackendType.S3 -> {
-                    if (backend.s3Backend() == null) {
-                        throw new BadRequestResponse("No S3 backend configuration provided");
+                case RepositoryBackendType.FILESYSTEM -> {
+                    if (repository.filesystemBackend() == null) {
+                        throw new BadRequestResponse("No filesystem backend configuration provided");
                     }
-                    var existingConfig = c.find(Identifier.of(new S3Backend.Id(backendId)));
+                    var config = new FilesystemBackendConfiguration(
+                        repositoryId,
+                        Identifier.of(new FilesystemBackend.Id(backendId)),
+                        repository.filesystemBackend().prefix()
+                    );
+                    var existingConfig = c.find(Identifier.of(config));
                     if (existingConfig.isEmpty()) {
-                        throw new NotFoundResponse("S3 backend configuration not found");
+                        c.insert(config);
+                    } else {
+                        c.update(config);
                     }
-                    var secretAccessKey = backend.s3Backend().secretAccessKey();
-                    if (secretAccessKey == null) {
-                        secretAccessKey = existingConfig.get().secretAccessKey();
-                    }
-                    var newS3Config = new S3Backend(
-                        existingConfig.get().id(),
-                        backend.s3Backend().region(),
-                        backend.s3Backend().endpoint(),
-                        backend.s3Backend().accessKeyId(),
-                        secretAccessKey
-                    );
-                    c.update(newS3Config);
                 }
             }
             context.json(new ApiSuccess());
-        });
-    }
-
-    @OpenApi(
-        path = "/dashboard/admin/api/backends",
-        pathParams = @OpenApiParam(name = "id", type = UUID.class),
-        methods = HttpMethod.POST,
-        summary = "Create repository backend",
-        responses = {
-            @OpenApiResponse(
-                status = "200",
-                description = "Backend created",
-                content = @OpenApiContent(from = ApiIdentifyingSuccess.class)
-            )
-        },
-        requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = RepositoryBackendApi.class), required = true)
-    )
-    public static void createBackend(Context context) throws SQLException {
-        connection(context).transact(c -> {
-            var backend = context.bodyAsClass(RepositoryBackendApi.class);
-            var backendId = UUID.randomUUID();
-            var repoBackend = new RepositoryBackend(backendId, backend.type());
-            c.insert(repoBackend);
-            switch (backend.type()) {
-                case RepositoryBackendType.S3 -> {
-                    if (backend.s3Backend() == null) {
-                        throw new BadRequestResponse("No S3 backend configuration provided");
-                    }
-                    var secretAccessKey = backend.s3Backend().secretAccessKey();
-                    if (secretAccessKey == null) {
-                        throw new BadRequestResponse("S3 backend must provide secret access key");
-                    }
-                    var newS3Config = new S3Backend(
-                        Identifier.of(repoBackend),
-                        backend.s3Backend().region(),
-                        backend.s3Backend().endpoint(),
-                        backend.s3Backend().accessKeyId(),
-                        secretAccessKey
-                    );
-                    c.insert(newS3Config);
-                }
-            }
-            context.json(new ApiIdentifyingSuccess(null, backendId));
         });
     }
 

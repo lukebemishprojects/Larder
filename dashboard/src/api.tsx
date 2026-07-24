@@ -81,7 +81,7 @@ export function isNamespaceValid(namespace: string): boolean {
 
 export const Backend = z.object({
     id: z.uuid(),
-    type: z.enum(["s3backend"])
+    type: z.enum(["s3backend", "filesystembackend"])
 });
 export type Backend = z.infer<typeof Backend>;
 
@@ -100,6 +100,16 @@ export function newS3BackendConfiguration(): S3BackendConfiguration {
     };
 }
 
+export const FilesystemBackendConfiguration = z.object({
+    prefix: z.string()
+})
+export type FilesystemBackendConfiguration = z.infer<typeof FilesystemBackendConfiguration>;
+export function newFilesystemBackendConfiguration(): FilesystemBackendConfiguration {
+    return {
+        prefix: ""
+    };
+}
+
 export const Repository = z.object({
     name: z.string(),
     supportsmavendeploy: z.boolean(),
@@ -107,7 +117,8 @@ export const Repository = z.object({
     expirationdays: z.number().nonnegative(),
     mutable: z.boolean(),
     backend: nullishOptional(Backend.shape.id),
-    s3backend: nullishOptional(S3BackendConfiguration)
+    s3backend: nullishOptional(S3BackendConfiguration),
+    filesystembackend: nullishOptional(FilesystemBackendConfiguration)
 });
 export type Repository = z.infer<typeof Repository>;
 export function newRepository(): Repository {
@@ -156,22 +167,32 @@ export function newS3Backend(): S3Backend {
     };
 }
 
+export const FilesystemBackend = z.object({
+    location: nullishOptional(z.string())
+})
+export type FilesystemBackend = z.infer<typeof FilesystemBackend>
+export function newFilesystemBackend(): FilesystemBackend {
+    return {}
+}
+
 export const BackendConfiguration = z.object({
     id: nullishOptional(z.uuid()),
-    type: z.enum(["s3backend"]),
-    s3backend: nullishOptional(S3Backend)
+    type: z.enum(["s3backend", "filesystembackend"]),
+    s3backend: nullishOptional(S3Backend),
+    filesystembackend: nullishOptional(FilesystemBackend),
 });
 export type BackendConfiguration = z.infer<typeof BackendConfiguration>;
 export function newBackendConfiguration(): BackendConfiguration {
     return {
-        type: "s3backend",
-        s3backend: newS3Backend()
+        type: "filesystembackend",
+        filesystembackend: newFilesystemBackend()
     };
 }
 
 export function backendTypePrettyName(type: BackendConfiguration["type"]): string {
     switch (type) {
         case "s3backend": return "S3";
+        case "filesystembackend": return "File System";
     }
 }
 
