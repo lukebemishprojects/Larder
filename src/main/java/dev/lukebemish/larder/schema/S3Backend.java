@@ -1,5 +1,6 @@
 package dev.lukebemish.larder.schema;
 
+import dev.lukebemish.larder.Backend;
 import dev.lukebemish.larder.orm.DatabasePrimitiveType;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.Model;
@@ -11,7 +12,7 @@ public record S3Backend(
     String endpoint,
     String accessKeyId,
     String secretAccessKey
-) implements Model {
+) implements Model, Backend<S3BackendConfiguration> {
     public record Id(Identifier<RepositoryBackend> id) implements Identifier.Template<S3Backend> {}
 
     public static final Representation<S3Backend> REPRESENTATION = Representation.build(it -> {

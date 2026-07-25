@@ -1,11 +1,18 @@
 package dev.lukebemish.larder;
 
+import dev.lukebemish.larder.api.UserCapability;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.schema.Repository;
 import dev.lukebemish.larder.schema.RepositoryIndex;
-import dev.lukebemish.larder.template.IndexEntry;
+import dev.lukebemish.larder.api.IndexEntry;
 import io.javalin.http.Context;
 import io.javalin.http.NotFoundResponse;
+import io.javalin.openapi.ContentType;
+import io.javalin.openapi.HttpMethod;
+import io.javalin.openapi.OpenApi;
+import io.javalin.openapi.OpenApiContent;
+import io.javalin.openapi.OpenApiParam;
+import io.javalin.openapi.OpenApiResponse;
 import io.pebbletemplates.pebble.template.PebbleTemplate;
 
 import java.io.IOException;
@@ -20,6 +27,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+
+import static dev.lukebemish.larder.Larder.isHtml;
 
 public class Indices {
     private final PebbleTemplate indexTemplate;
@@ -41,31 +50,36 @@ public class Indices {
         return writer.toString();
     }
 
-    private static final List<String> HUMAN_UNITS = List.of(
-        "K", "M", "G", "T", "P", "E", "Z", "Y"
-    );
-
-    private static String humanSize(long byteSize) {
-        var threshold = 1000;
-
-        if (Math.abs(byteSize) < threshold) {
-            return Long.toString(byteSize);
+    @OpenApi(
+        path = "/{repository}/{path}",
+        pathParams = {
+            @OpenApiParam(
+                name = "repository"
+            ),
+            @OpenApiParam(
+                name = "path",
+                allowEmptyValue = true
+            )
+        },
+        methods = HttpMethod.GET,
+        summary = "Get index of location in a repository",
+        responses = {
+            @OpenApiResponse(
+                status = "200",
+                content = @OpenApiContent(mimeType = ContentType.HTML),
+                description = "A browsable HTML index"
+            ),
+            @OpenApiResponse(
+                status = "200",
+                content = @OpenApiContent(from = IndexEntry[].class, mimeType = ContentType.JSON),
+                description = "Index of location in the repository"
+            ),
+            @OpenApiResponse(
+                status = "404",
+                description = "Repository or path not found"
+            )
         }
-
-        var ofUnit = (double) byteSize;
-        var u = 0;
-
-        do {
-            ofUnit /= threshold;
-            u++;
-        } while (Math.round(ofUnit * 10) / 10 >= threshold && u != HUMAN_UNITS.size());
-
-        return DECIMAL_FORMATTER.format(ofUnit)+HUMAN_UNITS.get(u - 1);
-    }
-
-    private static final DecimalFormat DECIMAL_FORMATTER = new DecimalFormat("0.0", new DecimalFormatSymbols(Locale.ROOT));
-    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
-
+    )
     public void listAt(Context context, String path, String repositoryName, boolean allowEmpty) throws SQLException {
         var repositoryId = Identifier.of(new Repository.Id(repositoryName));
         var parent = Identifier.of(new RepositoryIndex.Id(repositoryId, path, "../"));
@@ -102,19 +116,45 @@ public class Indices {
         var entries = matching.stream()
             .map(idx -> new IndexEntry(
                 idx.name(),
-                idx.lastModified().map(DATE_TIME_FORMATTER::format).orElse(""),
-                idx.size().map(Indices::humanSize).orElse("")
+                idx.lastModified(),
+                idx.size(),
+                idx.isDirectory()
             ))
             .toList();
-        context.html(fillIndex("/"+repositoryName+path, entries));
+        if (isHtml(context)) {
+            context.html(fillIndex("/" + repositoryName + path, entries));
+        } else {
+            context.json(entries);
+        }
     }
 
+    @OpenApi(
+        path = "/",
+        methods = HttpMethod.GET,
+        summary = "Get index of available repositories",
+        responses = {
+            @OpenApiResponse(
+                status = "200",
+                content = @OpenApiContent(mimeType = ContentType.HTML),
+                description = "A browsable HTML index"
+            ),
+            @OpenApiResponse(
+                status = "200",
+                content = @OpenApiContent(from = IndexEntry[].class, mimeType = ContentType.JSON),
+                description = "Index of available repositories"
+            )
+        }
+    )
     public void listRepositories(Context context) throws SQLException {
         var repos = new ArrayList<>(context.appData(Larder.CONNECTION_KEY).select(Repository.REPRESENTATION));
         repos.sort(Comparator.comparing(Repository::name));
-        context.html(fillIndex("/", repos.stream()
-            .map(repo -> new IndexEntry(repo.name()+"/", "", ""))
-            .toList()
-        ));
+        var entries = repos.stream()
+            .map(repo -> new IndexEntry(repo.name() + "/", Optional.empty(), Optional.empty(), true))
+            .toList();
+        if (isHtml(context)) {
+            context.html(fillIndex("/", entries));
+        } else {
+            context.json(entries);
+        }
     }
 }

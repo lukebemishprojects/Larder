@@ -29,5 +29,4 @@ module dev.lukebemish.larder {
     requires JSONata4Java;
 
     opens dev.lukebemish.larder.api to tools.jackson.databind, io.pebbletemplates;
-    opens dev.lukebemish.larder.template to io.pebbletemplates;
 }

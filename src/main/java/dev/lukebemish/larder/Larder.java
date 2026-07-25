@@ -14,7 +14,9 @@ import io.javalin.http.Header;
 import io.javalin.http.HttpResponseException;
 import io.javalin.http.HttpStatus;
 import io.javalin.http.UnauthorizedResponse;
+import io.javalin.http.staticfiles.JavalinStaticResourceHandler;
 import io.javalin.http.staticfiles.Location;
+import io.javalin.http.staticfiles.StaticFileHandler;
 import io.javalin.json.JavalinJackson3;
 import io.javalin.openapi.plugin.OpenApiPlugin;
 import io.javalin.openapi.plugin.redoc.ReDocPlugin;
@@ -82,6 +84,9 @@ public class Larder {
 
             config.validation.register(UUID.class, UUID::fromString);
 
+            var resourceHandler = new NotJustStaticResourceHandler(indices);
+            config.resourceHandler(resourceHandler);
+
             // General
             config.router.ignoreTrailingSlashes = true;
 
@@ -90,7 +95,7 @@ public class Larder {
             // Error handling
             config.routes.exception(UnauthorizedResponse.class, (e, ctx) -> {
                 ctx.status(e.getStatus());
-                if (isHtml(ctx.header(Header.ACCEPT))) {
+                if (isHtml(ctx)) {
                     var userRoles = oidcAuthenticator.userRoles(ctx);
                     if (userRoles.isEmpty()) {
                         oidcAuthenticator.fillLoginRedirect(ctx);
@@ -128,8 +133,6 @@ public class Larder {
 
             // Role auth
             config.routes.beforeMatched(this::authenticate);
-
-            // TODO: Sign out
 
             // API methods
             config.routes.apiBuilder(() -> {
@@ -187,37 +190,13 @@ public class Larder {
                 staticFiles.directory = unpackIfNeeded(Larder.class.getModule(), "/dev/lukebemish/larder/indices/_internal", isNotLinked);
                 staticFiles.roles = Set.of();
             });
-
-            // Use of spa handler lets this run after static files
-            config.spaRoot.addHandler("/", ctx -> {
-                var path = normalizePath(ctx.path());
-                if (path.equals("/")) {
-                    indices.listRepositories(ctx);
-                    return;
-                }
-                var firstSlash = path.indexOf('/', 1);
-                var repositoryName = firstSlash == -1 ? path.substring(1) : path.substring(1,  firstSlash);
-                var rest = firstSlash == -1 ? "/" : path.substring(firstSlash);
-                indices.listAt(ctx, rest, repositoryName, firstSlash == -1);
-            });
         }).start(port);
 
         Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
     }
 
-    private String normalizePath(String path) {
-        if (!path.startsWith("/")) {
-            path = "/" + path;
-        }
-        while (path.length() > 1 && path.endsWith("/")) {
-            path = path.substring(0, path.length() - 1);
-        }
-        return path;
-    }
-
     private static void specializeError(Context ctx, ApiError apiError) {
-        var accept = ctx.header(Header.ACCEPT);
-        if (isHtml(accept)) {
+        if (isHtml(ctx)) {
             var template = ctx.appData(TEMPLATE_ENGINE_KEY).getTemplate("error-page.html");
             var writer = new StringWriter();
             try {
@@ -233,8 +212,14 @@ public class Larder {
         }
     }
 
-    private static boolean isHtml(@Nullable String accept) {
+    static boolean isHtml(Context ctx) {
+        var accept = ctx.header(Header.ACCEPT);
         return accept == null || (accept.contains(ContentType.HTML) || accept.contains("*/*") || accept.isEmpty());
+    }
+
+    static boolean isJson(Context ctx) {
+        var accept = ctx.header(Header.ACCEPT);
+        return accept == null || (accept.contains(ContentType.JSON) || accept.contains("*/*") || accept.isEmpty());
     }
 
     private static boolean isNotLinked() {

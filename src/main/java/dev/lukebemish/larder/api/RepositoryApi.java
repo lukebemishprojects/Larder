@@ -1,5 +1,6 @@
 package dev.lukebemish.larder.api;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.ModelConnection;
@@ -22,8 +23,8 @@ public record RepositoryApi(
     @JsonProperty("expirationdays") @OpenApiName("expirationdays") int expirationDays,
     boolean mutable,
     UUID backend,
-    @JsonProperty("s3backend") @OpenApiName("s3backend") @Nullable S3BackendConfigurationApi s3Backend,
-    @JsonProperty("filesystembackend") @OpenApiName("filesystembackend") @Nullable FilesystemBackendConfigurationApi filesystemBackend
+    @JsonProperty("s3backend") @OpenApiName("s3backend") @JsonInclude(JsonInclude.Include.NON_ABSENT) @Nullable S3BackendConfigurationApi s3Backend,
+    @JsonProperty("filesystembackend") @OpenApiName("filesystembackend") @JsonInclude(JsonInclude.Include.NON_ABSENT) @Nullable FilesystemBackendConfigurationApi filesystemBackend
 ) {
     public static RepositoryApi from(Repository repository, ModelConnection connection) throws SQLException {
         var backend = connection.select(repository.backend());
