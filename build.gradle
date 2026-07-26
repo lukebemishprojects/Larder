@@ -28,6 +28,8 @@ repositories {
 def dashboardProdDirectory = file("dashboard/dist")
 def indicesProdDirectory = file("indices/dist")
 
+def assumeNpmPrebuilt = providers.gradleProperty("dev.lukebemish.larder.buildtooling.assume-npm-prebuilt")
+
 tasks.register("npmBuildProd", Exec) {
     executable = file("generate.sh")
     environment("LARDER_ENV", "prod")
@@ -38,6 +40,10 @@ tasks.register("npmBuildProd", Exec) {
     )
     inputs.dir("indices/src")
     inputs.dir("dashboard/src")
+
+    if (assumeNpmPrebuilt.isPresent() && (assumeNpmPrebuilt.get() as boolean)) {
+        enabled = false
+    }
 }
 
 configurations {
@@ -57,7 +63,9 @@ tasks.named("jar", Jar) {
     }
     // Excluded due to runtime impl generation
     exclude "dev/lukebemish/larder/api/Locations.java"
-    dependsOn tasks.npmBuildProd
+    if (!assumeNpmPrebuilt.isPresent() || !(assumeNpmPrebuilt.get() as boolean)) {
+        dependsOn tasks.npmBuildProd
+    }
 }
 
 dependencies {
