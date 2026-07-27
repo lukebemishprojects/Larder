@@ -1,7 +1,5 @@
 {
-  "name": "vite-template-solid",
-  "version": "0.0.0",
-  "description": "",
+  "name": "larder-dashboard",
   "type": "module",
   "scripts": {
     "start": "vite",
@@ -10,18 +8,17 @@
     "build-dev": "vite build --watch --outDir ../build/devResources/dashboard --emptyOutDir",
     "serve": "vite preview"
   },
-  "license": "MIT",
   "devDependencies": {
-    "solid-devtools": "^0.34.3",
+    "solid-devtools": "^0.34.5",
     "typescript": "^7.0.2",
-    "vite": "^7.1.4",
-    "vite-plugin-solid": "^2.11.8"
+    "vite": "^7.3.6",
+    "vite-plugin-solid": "^2.11.14"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.1.14",
-    "solid-js": "^1.9.5",
-    "tailwindcss": "^4.1.14",
-    "zod": "^4.1.12"
+    "@tailwindcss/vite": "^4.3.3",
+    "solid-js": "^1.9.14",
+    "tailwindcss": "^4.3.3",
+    "zod": "^4.4.3"
   },
   "allowScripts": {
     "esbuild@0.28.1": true

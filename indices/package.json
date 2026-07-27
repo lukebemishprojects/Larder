@@ -7,7 +7,7 @@
     "build": "npm run dist && npm run css:postcss && npm run css:hash-replace && npm run css:hash-rename"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.15",
+    "@tailwindcss/postcss": "^4.3.3",
     "postcss-cli": "^11.0.1"
   }
 }
