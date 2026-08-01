@@ -253,7 +253,7 @@ public final class Representation<T extends Model> {
         @Override
         List<String> uniqueSchema(String name) {
             return List.of(
-                String.format("UNIQUE %s", name)
+                String.format("UNIQUE (%s)", name)
             );
         }
 
@@ -299,7 +299,7 @@ public final class Representation<T extends Model> {
         @Override
         List<String> uniqueSchema(String name) {
             return List.of(
-                String.format("UNIQUE %s", name)
+                String.format("UNIQUE (%s)", name)
             );
         }
 
@@ -492,7 +492,7 @@ public final class Representation<T extends Model> {
         return find(representation, connection, identifier).orElseThrow(() -> new NoSuchElementException("Element "+identifier+" does not exist in database!"));
     }
 
-    static <T extends Model.Object> void update(Representation<T> representation, ModelConnection connection, T value) throws SQLException {
+    static <T extends Model> void update(Representation<T> representation, ModelConnection connection, T value) throws SQLException {
         executeUpdate(
             connection,
             String.format(
@@ -509,7 +509,7 @@ public final class Representation<T extends Model> {
             ),
             statement -> {
                 var offset = representation.writeFull(1, statement, value);
-                writeIdentifier(offset, statement, Identifier.of(representation, value));
+                writeIdentifier(representation, offset, statement, value);
             }
         );
     }
@@ -537,6 +537,13 @@ public final class Representation<T extends Model> {
             ),
             statement -> writeOneToMany(reprCast, 1, statement, value)
         );
+    }
+
+    private static <T extends Model> void writeIdentifier(Representation<T> representation, int offset, PreparedStatement statement, T value) throws SQLException {
+        for (var f : representation.idFields) {
+            writeField(offset, statement, f, f.encoder.apply(value));
+            offset += 1;
+        }
     }
 
     private static <T extends Model.OneToMany<?, ?>> void writeOneToMany(Representation<T> representation, int offset, PreparedStatement statement, T value) throws SQLException {
@@ -610,21 +617,21 @@ public final class Representation<T extends Model> {
         );
     }
 
-    void insert(ModelConnection connection, T value) throws SQLException {
+    static <T extends Model> void insert(Representation<T> representation, ModelConnection connection, T value) throws SQLException {
         executeUpdate(
             connection,
             String.format(
                 "INSERT INTO %s (%s) VALUES (%s);",
-                tableName,
-                fields.stream()
+                representation.tableName,
+                representation.fields.stream()
                     .map(f -> f.name)
                     .collect(Collectors.joining(", ")),
-                fields.stream()
+                representation.fields.stream()
                     .map(f -> f.name)
                     .map(f -> "?")
                     .collect(Collectors.joining(", "))
             ),
-            statement -> writeFull(1, statement, value)
+            statement -> representation.writeFull(1, statement, value)
         );
     }
 
@@ -785,21 +792,21 @@ public final class Representation<T extends Model> {
             }
 
             public <F> OptionalField<T, F> optionalField(String name, DatabasePrimitiveType<F> primitiveType, Function<G, Optional<F>> encoder) {
-                var f = delegate.optionalField(namePrefix + name, primitiveType, partial.andThen(encoder));
+                var f = delegate.optionalField(namePrefix + "_" + name, primitiveType, partial.andThen(encoder));
                 fields.add(f);
                 fieldTypes.add(encoder);
                 return f;
             }
 
             public <F> Field<T, F> field(String name, DatabasePrimitiveType<F> primitiveType, Function<G, F> encoder) {
-                var f = delegate.field(namePrefix + name, primitiveType, partial.andThen(encoder));
+                var f = delegate.field(namePrefix + "_" + name, primitiveType, partial.andThen(encoder));
                 fields.add(f);
                 fieldTypes.add(encoder);
                 return f;
             }
 
             public <F extends Model.Object> ReferenceField<T, F> referenceField(String name, Supplier<Representation<F>> reference, Function<G, Identifier<F>> encoder) {
-                var f = delegate.referenceField(namePrefix + name, reference, partial.andThen(encoder));
+                var f = delegate.referenceField(namePrefix + "_" + name, reference, partial.andThen(encoder));
                 fields.add(f);
                 fieldTypes.add(encoder);
                 return f;

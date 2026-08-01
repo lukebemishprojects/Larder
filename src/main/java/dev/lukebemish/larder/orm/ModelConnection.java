@@ -1,14 +1,17 @@
 package dev.lukebemish.larder.orm;
 
 import dev.lukebemish.polymorphicsignatures.PolymorphicSignature;
+import org.jspecify.annotations.Nullable;
 
 import java.lang.invoke.CallSite;
 import java.lang.invoke.ConstantCallSite;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -121,18 +124,48 @@ public class ModelConnection {
     }
 
     @SuppressWarnings("unchecked")
-    private static Class<? extends Model> findModelType(Class<?> partialValueType) {
-        Class<? extends Model> foundModelType = null;
+    private static @Nullable Class<? extends Model> findModelTypeFromPartial(Class<?> partialValueType, Type[] typeArgs, Class<?>[] typeArgsValues) {
         for (var inter : partialValueType.getGenericInterfaces()) {
             if (inter instanceof ParameterizedType parameterizedType) {
                 if (Partial.Value.class.equals(parameterizedType.getRawType())) {
                     if (parameterizedType.getActualTypeArguments()[0] instanceof Class<?> clazz) {
-                        foundModelType = (Class<? extends Model>) clazz;
-                        break;
+                        if (clazz.equals(void.class)) {
+                            return null;
+                        }
+                        return (Class<? extends Model>) clazz;
                     }
+                    for (int i = 0; i < typeArgs.length; i++) {
+                        var arg = typeArgs[i];
+                        if (parameterizedType.getActualTypeArguments()[0].equals(arg)) {
+                            return (Class<? extends Model>) typeArgsValues[i];
+                        }
+                    }
+                } else if (Partial.Value.class.isAssignableFrom((Class<?>) parameterizedType.getRawType())) {
+                    var newTypeArgs = ((Class<?>) parameterizedType.getRawType()).getTypeParameters();
+                    var newTypeArgsValues = parameterizedType.getActualTypeArguments();
+                    var newTypeArgsFilled = new Class<?>[newTypeArgsValues.length];
+                    outer: for (int i = 0; i < newTypeArgsFilled.length; i++) {
+                        var value = newTypeArgsValues[i];
+                        if (value instanceof Class<?> clazz) {
+                            newTypeArgsFilled[i] = clazz;
+                            continue;
+                        }
+                        for (int j = 0; j < typeArgs.length; j++) {
+                            if (typeArgs[j].equals(value)) {
+                                newTypeArgsFilled[i] = typeArgsValues[j];
+                                continue outer;
+                            }
+                        }
+                    }
+                    return findModelTypeFromPartial((Class<?>) parameterizedType.getRawType(), newTypeArgs, newTypeArgsFilled);
                 }
             }
         }
+        return null;
+    }
+
+    private static Class<? extends Model> findModelType(Class<?> partialValueType) {
+        Class<? extends Model> foundModelType = findModelTypeFromPartial(partialValueType, new Type[0], new Class<?>[0]);
         if (foundModelType == null) {
             throw new IllegalArgumentException("Partial value type "+ partialValueType +" does not directly implement Partial.Value, or cannot infer model type from partial value type parameter");
         }

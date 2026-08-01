@@ -30,7 +30,7 @@ public record UserNamespace(Identifier<User> source, String value, boolean confi
             var confirmed = it.field("confirmed", DatabasePrimitiveType.BOOLEAN, UserNamespace::confirmed);
             it.partialSource(BY_USER);
             it.partial(BY_PAIR);
-            return it.build("usernamespacesunconfirmed", result -> new UserNamespace(
+            return it.build("usernamespaces", result -> new UserNamespace(
                 id.get(result),
                 namespace.get(result),
                 confirmed.get(result)
@@ -38,6 +38,6 @@ public record UserNamespace(Identifier<User> source, String value, boolean confi
         });
 
     public UserNamespace withConfirmed() {
-        return new UserNamespace(source, value, confirmed);
+        return new UserNamespace(source, value, true);
     }
 }

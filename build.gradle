@@ -48,7 +48,7 @@ tasks.named("jar", Jar) {
         into("dev/lukebemish/larder/indices")
     }
     // Excluded due to runtime impl generation
-    exclude "dev/lukebemish/larder/api/Locations.java"
+    exclude "dev/lukebemish/larder/api/Locations.class"
     if (!assumeNpmPrebuilt.isPresent() || !(assumeNpmPrebuilt.get() as boolean)) {
         dependsOn tasks.npmBuildProd
     }

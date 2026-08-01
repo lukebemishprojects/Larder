@@ -46,6 +46,7 @@ public record Repository(
         it.unique(name);
 
         it.partial(BY_BACKEND, backend, ByBackend::repository);
+        it.partial(BY_NAME, name, ByName::name);
 
         return it.build("repositories", result -> new Repository(
                 id.get(result),

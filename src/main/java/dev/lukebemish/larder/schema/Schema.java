@@ -34,8 +34,6 @@ public class Schema {
                     FOREIGN KEY (id) REFERENCES repositorybackends (id)
                 );
 
-                CREATE INDEX s3backends_by_id ON s3backends (id);
-
                 CREATE TABLE IF NOT EXISTS repositories (
                     id uuid NOT NULL,
                     name varchar NOT NULL,
@@ -46,7 +44,7 @@ public class Schema {
                     backend uuid NOT NULL,
                     supportssnapshots boolean NOT NULL,
                     PRIMARY KEY (id),
-                    UNIQUE name,
+                    UNIQUE (name),
                     FOREIGN KEY (backend) REFERENCES repositorybackends (id)
                 );
 
@@ -91,8 +89,6 @@ public class Schema {
                     FOREIGN KEY (id) REFERENCES repositorybackends (id)
                 );
 
-                CREATE INDEX filesystembackends_by_id ON filesystembackends (id);
-
                 CREATE TABLE IF NOT EXISTS accesstokens (
                     id uuid NOT NULL,
                     key varchar NOT NULL,
@@ -103,7 +99,7 @@ public class Schema {
                     expiry timestamp NOT NULL,
                     canpublish boolean NOT NULL,
                     PRIMARY KEY (id),
-                    UNIQUE key,
+                    UNIQUE (key),
                     FOREIGN KEY (owner) REFERENCES users (id)
                 );
 
@@ -139,8 +135,6 @@ public class Schema {
 
                 CREATE INDEX repositoryindices_by_repository_and_path ON repositoryindices (repository, locationpath);
 
-                CREATE INDEX repositoryindices_by_unique ON repositoryindices (repository, locationpath, locationname);
-
                 CREATE TABLE IF NOT EXISTS tokennamespaces (
                     token uuid NOT NULL,
                     namespace varchar NOT NULL,
@@ -159,8 +153,6 @@ public class Schema {
                     FOREIGN KEY (backend) REFERENCES repositorybackends (id)
                 );
 
-                CREATE INDEX filesystembackendconfigurations_by_id ON filesystembackendconfigurations (id);
-
                 CREATE TABLE IF NOT EXISTS packages (
                     repository uuid NOT NULL,
                     identifiertype smallint NOT NULL,
@@ -172,7 +164,7 @@ public class Schema {
                     FOREIGN KEY (repository) REFERENCES repositories (id)
                 );
 
-                CREATE TABLE IF NOT EXISTS usernamespacesunconfirmed (
+                CREATE TABLE IF NOT EXISTS usernamespaces (
                     id uuid NOT NULL,
                     namespace varchar NOT NULL,
                     confirmed boolean NOT NULL,
@@ -180,9 +172,7 @@ public class Schema {
                     FOREIGN KEY (id) REFERENCES users (id)
                 );
 
-                CREATE INDEX usernamespacesunconfirmed_by_user ON usernamespacesunconfirmed (id);
-
-                CREATE INDEX usernamespacesunconfirmed_by_pair ON usernamespacesunconfirmed (id, namespace);
+                CREATE INDEX usernamespaces_by_user ON usernamespaces (id);
 
                 CREATE TABLE IF NOT EXISTS s3backendconfigurations (
                     id uuid NOT NULL,
@@ -192,9 +182,7 @@ public class Schema {
                     PRIMARY KEY (id),
                     FOREIGN KEY (id) REFERENCES repositories (id),
                     FOREIGN KEY (backend) REFERENCES repositorybackends (id)
-                );
-
-                CREATE INDEX s3backendconfigurations_by_id ON s3backendconfigurations (id);""")
+                );""")
             .downgrade(1, """
 
                 """) // TODO: fill

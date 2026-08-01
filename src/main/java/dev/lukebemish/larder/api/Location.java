@@ -3,14 +3,19 @@ package dev.lukebemish.larder.api;
 import dev.lukebemish.larder.utils.Enums;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
+import tools.jackson.core.JsonGenerator;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.DeserializationContext;
+import tools.jackson.databind.JavaType;
+import tools.jackson.databind.SerializationContext;
 import tools.jackson.databind.ValueDeserializer;
+import tools.jackson.databind.ValueSerializer;
 import tools.jackson.databind.annotation.JsonDeserialize;
 import tools.jackson.databind.annotation.JsonSerialize;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.type.TypeFactory;
 
 import java.lang.classfile.ClassFile;
 import java.lang.constant.ClassDesc;
@@ -38,7 +43,7 @@ import static java.lang.constant.ConstantDescs.*;
  * This type is designed such that it is impossible to create an instance of it other than those defined through the
  * provided file; other locations simply cannot be represented.
  */
-@JsonSerialize(as = Locations.class)
+@JsonSerialize(using = LocationSerializer.class)
 @JsonDeserialize(using = LocationDeserializer.class)
 @Enums.EnumIsh
 public sealed interface Location permits Locations {
@@ -203,6 +208,14 @@ final class LocationDeserializer extends ValueDeserializer<Location> {
             throw UnrecognizedPropertyException.from(p, LocationsInitializer.LOCATIONS, string, Arrays.stream(Location.values()).<Object>map(Location::name).toList());
         }
         return location;
+    }
+}
+
+final class LocationSerializer extends ValueSerializer<Location> {
+    @Override
+    public void serialize(Location value, JsonGenerator gen, SerializationContext ctxt) throws JacksonException {
+        LocationsInitializer.checkFailure();
+        gen.writeString(value.name());
     }
 }
 

@@ -25,11 +25,12 @@ public final class Enums {
     @PolymorphicSignature("$valueOf")
     public native static <T> @Nullable T tryValueOf(String value);
 
+    @PolymorphicSignature("$values")
+    public native static <T> T[] values();
+
     public static CallSite $valueOf(MethodHandles.Lookup lookup, String name, MethodType methodType) throws NoSuchMethodException, IllegalAccessException {
         var targetType = methodType.returnType();
-        if (!Enum.class.isAssignableFrom(targetType) && !targetType.isAnnotationPresent(EnumIsh.class)) {
-            throw new IllegalArgumentException("Not enum-ish: "+targetType);
-        }
+        checkEnumIsh(targetType);
         var valueOf = lookup.findStatic(targetType, "valueOf", MethodType.methodType(targetType, String.class));
         if (name.equals("valueOf")) {
             return new ConstantCallSite(valueOf);
@@ -41,5 +42,22 @@ public final class Enums {
             String.class
         );
         return new ConstantCallSite(MethodHandles.catchException(valueOf, IllegalArgumentException.class, constantNull));
+    }
+
+    private static void checkEnumIsh(Class<?> targetType) {
+        if (!Enum.class.isAssignableFrom(targetType) && !targetType.isAnnotationPresent(EnumIsh.class)) {
+            throw new IllegalArgumentException("Not enum-ish: "+ targetType);
+        }
+    }
+
+    public static CallSite $values(MethodHandles.Lookup lookup, String name, MethodType methodType) throws NoSuchMethodException, IllegalAccessException {
+        var targetType = methodType.returnType();
+        if (!targetType.isArray()) {
+            throw new IllegalArgumentException("Not an array type: "+targetType);
+        }
+        var enumIshType = targetType.componentType();
+        checkEnumIsh(enumIshType);
+        var values = lookup.findStatic(enumIshType, "values()", MethodType.methodType(enumIshType.arrayType()));
+        return new ConstantCallSite(values.asType(methodType));
     }
 }
