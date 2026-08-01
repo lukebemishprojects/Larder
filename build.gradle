@@ -8,22 +8,8 @@ plugins {
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 
-group = 'org.example'
+group = 'dev.lukebemish'
 version = '0.1.0'
-
-repositories {
-    mavenCentral()
-    exclusiveContent {
-        forRepository {
-            maven {
-                url = "https://libraries.minecraft.net"
-            }
-        }
-        filter {
-            includeGroupAndSubgroups("com.mojang")
-        }
-    }
-}
 
 def dashboardProdDirectory = file("dashboard/dist")
 def indicesProdDirectory = file("indices/dist")
@@ -75,7 +61,6 @@ dependencies {
     annotationProcessor("io.javalin.community.openapi:openapi-annotation-processor:7.2.2")
     implementation("io.javalin.community.openapi:javalin-openapi-plugin:7.2.2")
     implementation("io.javalin.community.openapi:javalin-swagger-plugin:7.2.2")
-    implementation("io.javalin.community.openapi:javalin-redoc-plugin:7.2.2")
     implementation("org.postgresql:postgresql:42.7.13")
     implementation("org.slf4j:slf4j-simple:2.0.18")
     implementation("tools.jackson.core:jackson-databind:3.2.1")
@@ -89,6 +74,7 @@ dependencies {
 
     implementation("io.pebbletemplates:pebble:4.1.2")
 
+    annotationProcessor(project(":processor"))
     annotationProcessor("dev.lukebemish:polymorphic-signatures:0.1.0")
     compileOnly("dev.lukebemish:polymorphic-signatures:0.1.0")
     implementation("dev.lukebemish:polymorphic-signatures:0.1.0") {
@@ -111,13 +97,12 @@ def modulesToAdd = [
     "jjwt.impl",
 
     // npm webjars, jdeps doesn't create deps on these
-    "swagger.ui",
-    "redoc",
-    "js.tokens"
+    "swagger.ui"
 ]
 
 tasks.named('compileJava', JavaCompile) {
     javacPostProcessor.plugins.add('dev.lukebemish.polymorphic-signatures')
+    javacPostProcessor.plugins.add('dev.lukebemish.larder.processor.orm')
     modularity.inferModulePath = true
 
     options.javaModuleVersion = project.version.toString()
@@ -188,6 +173,16 @@ tasks.register("testDev", JavaExec) {
         jvmArgs("--add-modules", it)
     }
     dependsOn tasks.startDevDocker
+    outputs.upToDateWhen { false }
+}
+
+tasks.register("printSchemas", JavaExec) {
+    workingDir = layout.projectDirectory
+    mainClass = "dev.lukebemish.larder.schema.Schema"
+    classpath(configurations.applicationClasspath)
+    javaLauncher = javaToolchains.launcherFor {
+        it.languageVersion = JavaLanguageVersion.of(25)
+    }
     outputs.upToDateWhen { false }
 }
 

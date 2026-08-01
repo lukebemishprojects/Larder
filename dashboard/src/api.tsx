@@ -116,6 +116,7 @@ export const Repository = z.object({
     supportspublishportal: z.boolean(),
     expirationdays: z.number().nonnegative(),
     mutable: z.boolean(),
+    supportssnapshots: z.boolean(),
     backend: nullishOptional(Backend.shape.id),
     s3backend: nullishOptional(S3BackendConfiguration),
     filesystembackend: nullishOptional(FilesystemBackendConfiguration)
@@ -127,6 +128,7 @@ export function newRepository(): Repository {
         supportsmavendeploy: false,
         supportspublishportal: false,
         mutable: false,
+        supportssnapshots: false,
         expirationdays: 0
     };
 }
@@ -142,7 +144,7 @@ export function validateRepository(repo: Repository, setStatus: Setter<OrError>)
     return true;
 }
 
-const reservedpaths = new Set(['api', 'dashboard', 'publish', '_internal']);
+const reservedpaths = new Set(["api", "dashboard", "publish", "_internal", "portal", "login", "logout", "signin", "swagger", "openapi"]);
 
 function isRepositoryNameValid(repositoryname: string): boolean {
     return /^[a-z0-9._-]+$/.test(repositoryname) && !reservedpaths.has(repositoryname);

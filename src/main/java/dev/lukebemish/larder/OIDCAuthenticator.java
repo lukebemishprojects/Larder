@@ -15,6 +15,7 @@ import com.github.scribejava.core.oauth.AccessTokenRequestParams;
 import com.github.scribejava.core.oauth.OAuth20Service;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.schema.User;
+import dev.lukebemish.larder.utils.Enums;
 import dev.lukebemish.larder.utils.ExpiringValue;
 import io.javalin.http.BadRequestResponse;
 import io.javalin.http.Context;
@@ -302,7 +303,7 @@ final class OIDCAuthenticator {
             }
 
             // Deterministically generated from the sub
-            var userUUID = Generators.nameBasedGenerator(ApiMethods.UUID_ISS).generate(sub);
+            var userUUID = Generators.nameBasedGenerator(Api.UUID_ISS).generate(sub);
 
             // We have enough info to get / query the user now...
             context.appData(Larder.CONNECTION_KEY).transact(c -> {
@@ -516,11 +517,7 @@ final class OIDCAuthenticator {
         }
         var userUUID = UUID.fromString(bodyJson.get("user").asString());
         var roles = bodyJson.get("roles").valueStream().map(JsonNode::asString).<Role>map(roleText -> {
-            try {
-                return Role.Builtin.valueOf(roleText.toUpperCase(Locale.ROOT));
-            } catch (IllegalArgumentException e) {
-                return null;
-            }
+            return (Role.Builtin) Enums.tryValueOf(roleText.toUpperCase(Locale.ROOT));
         }).filter(Objects::nonNull).collect(Collectors.toSet());
         var expiration = Instant.ofEpochSecond(bodyJson.get("exp").asLong());
         var now = Instant.now();
@@ -529,7 +526,7 @@ final class OIDCAuthenticator {
             var newToken = userJwt(bodyJson.get("id").asString(), userUUID, roles);
             context.cookie(SESSION_TOKEN_COOKIE, newToken);
         }
-        var userId = new User.Id(userUUID);
+        var userId = Identifier.of(User.REPRESENTATION, userUUID);
         return new Larder.AuthInfo(userId, roles);
     }
 }

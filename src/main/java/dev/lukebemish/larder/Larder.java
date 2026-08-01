@@ -3,6 +3,7 @@ package dev.lukebemish.larder;
 import com.api.jsonata4java.expressions.Expressions;
 import com.api.jsonata4java.expressions.ParseException;
 import dev.lukebemish.larder.api.ApiError;
+import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.ModelConnection;
 import dev.lukebemish.larder.schema.Schema;
 import dev.lukebemish.larder.schema.User;
@@ -14,12 +15,12 @@ import io.javalin.http.Header;
 import io.javalin.http.HttpResponseException;
 import io.javalin.http.HttpStatus;
 import io.javalin.http.UnauthorizedResponse;
-import io.javalin.http.staticfiles.JavalinStaticResourceHandler;
 import io.javalin.http.staticfiles.Location;
-import io.javalin.http.staticfiles.StaticFileHandler;
 import io.javalin.json.JavalinJackson3;
+import io.javalin.openapi.BasicAuth;
+import io.javalin.openapi.BearerAuth;
+import io.javalin.openapi.CookieAuth;
 import io.javalin.openapi.plugin.OpenApiPlugin;
-import io.javalin.openapi.plugin.redoc.ReDocPlugin;
 import io.javalin.openapi.plugin.swagger.SwaggerPlugin;
 import io.pebbletemplates.pebble.PebbleEngine;
 import org.jspecify.annotations.Nullable;
@@ -126,10 +127,12 @@ public class Larder {
             config.registerPlugin(new OpenApiPlugin(pluginConfig -> {
                 pluginConfig.withDefinitionConfiguration((_, definition) -> {
                     definition.info(info -> info.title("Larder API"));
+                    definition.withSecurityScheme("bearer", new BearerAuth());
+                    definition.withSecurityScheme("basic", new BasicAuth());
+                    definition.withSecurityScheme("dashboardCookie", new CookieAuth("session_token"));
                 });
             }));
             config.registerPlugin(new SwaggerPlugin());
-            config.registerPlugin(new ReDocPlugin());
 
             // Role auth
             config.routes.beforeMatched(this::authenticate);
@@ -146,31 +149,44 @@ public class Larder {
 
                     path("admin", List.of(Role.Builtin.ADMIN), () -> {
                         path("api", () -> {
-                            get("users", ApiMethods::listUsers);
-                            get("repositories", ApiMethods::listRepositories);
-                            get("repositories/{repositoryName}", ApiMethods::getRepository);
-                            get("backends", ApiMethodsBackend::listBackends);
-                            get("backends/filesystem", ApiMethodsBackend::listFilesystemLocations);
-                            get("backends/{id}", ApiMethodsBackend::getBackend);
+                            get("users", Api::listUsers);
+                            get("repositories", Api::listRepositories);
+                            get("repositories/{repositoryName}", Api::getRepository);
+                            get("backends", ApiBackends::listBackends);
+                            get("backends/filesystem", ApiBackends::listFilesystemLocations);
+                            get("backends/{id}", ApiBackends::getBackend);
 
-                            delete("repositories/{repositoryName}", ApiMethods::removeRepository);
-                            delete("backends/{id}", ApiMethodsBackend::removeBackend);
+                            delete("repositories/{repositoryName}", Api::removeRepository);
+                            delete("backends/{id}", ApiBackends::removeBackend);
 
-                            post("namespaces/{user}/create/{namespace}", ApiMethods::addNamespace);
-                            post("namespaces/{user}/confirm/{namespace}", ApiMethods::confirmNamespace);
-                            post("namespaces/{user}/delete/{namespace}", ApiMethods::removeNamespace);
+                            post("namespaces/{user}/create/{namespace}", Api::addNamespace);
+                            post("namespaces/{user}/confirm/{namespace}", Api::confirmNamespace);
+                            post("namespaces/{user}/delete/{namespace}", Api::removeNamespace);
 
-                            post("repositories/{repositoryName}", ApiMethods::updateRepository);
-                            post("backends/{id}", ApiMethodsBackend::updateBackend);
-                            post("backends", ApiMethodsBackend::createBackend);
+                            post("repositories/{repositoryName}", Api::updateRepository);
+                            post("backends/{id}", ApiBackends::updateBackend);
+                            post("backends", ApiBackends::createBackend);
                         });
                     });
                     path("api", () -> {
-                        get("whoami", ApiMethods::whoAmI);
-                        get("whatcanido", ApiMethods::whatCanIDo);
-                        get("namespaces/{user}/list", ApiMethods::listNamespaces);
+                        get("whoami", Api::whoAmI);
+                        get("whatcanido", Api::whatCanIDo);
+                        get("namespaces/{user}/list", Api::listNamespaces);
 
-                        post("namespaces/{user}/request/{namespace}", ApiMethods::requestNamespace);
+                        post("namespaces/{user}/request/{namespace}", Api::requestNamespace);
+
+                        get("tokens", ApiTokens::listTokens);
+                        post("tokens", ApiTokens::issueToken);
+                        delete("tokens/{id}", ApiTokens::revokeToken);
+                    });
+                });
+
+                path("/portal/{repository}", () -> {
+                    path("api/v1", () -> {
+                        post("publisher/upload", ApiPortalPublish::publisherUpload);
+                        post("publisher/status", ApiPortalPublish::publisherStatus);
+                        post("publisher/deployment/{id}", ApiPortalPublish::publisherDeploymentPublish);
+                        delete("publisher/deployment/{id}", ApiPortalPublish::publisherDeploymentDelete);
                     });
                 });
             });
@@ -260,7 +276,7 @@ public class Larder {
         }
     }
 
-    public record AuthInfo(User.@Nullable Id user, Set<Role> roles) {}
+    public record AuthInfo(@Nullable Identifier<User> user, Set<Role> roles) {}
     public static final String AUTH_INFO_KEY = "auth_info";
 
     private void authenticate(Context context) {

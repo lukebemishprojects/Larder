@@ -32,6 +32,11 @@ public sealed interface DatabasePrimitiveType<T> {
     DatabasePrimitiveType<LocalDate> DATE = new DatabasePrimitiveTypeImpl<>("date", Types.DATE, ((DatabasePrimitiveTypeImpl.Getter<Date>) ResultSet::getDate).map(Date::toLocalDate), ((DatabasePrimitiveTypeImpl.Setter<Date>) PreparedStatement::setDate).comap(Date::valueOf));
     DatabasePrimitiveType<LocalTime> TIME = new DatabasePrimitiveTypeImpl<>("time", Types.TIME, ((DatabasePrimitiveTypeImpl.Getter<Time>) ResultSet::getTime).map(Time::toLocalTime), ((DatabasePrimitiveTypeImpl.Setter<Time>) PreparedStatement::setTime).comap(Time::valueOf));
     DatabasePrimitiveType<UUID> UUID = new DatabasePrimitiveTypeImpl<>("uuid", Types.OTHER, (result, idx) -> (UUID) result.getObject(idx), PreparedStatement::setObject);
+    DatabasePrimitiveType<byte[]> BYTEA = new DatabasePrimitiveTypeImpl<>("bytea", Types.OTHER, ResultSet::getBytes, PreparedStatement::setBytes);
+
+    static DatabasePrimitiveType<String> ofChar(int n) {
+        return new DatabasePrimitiveTypeImpl<>("char("+n+")", Types.CHAR, ResultSet::getString, PreparedStatement::setString);
+    }
 }
 
 record DatabasePrimitiveTypeImpl<T>(String typeString, int type, Getter<T> getter, Setter<T> setter) implements DatabasePrimitiveType<T> {
@@ -58,7 +63,7 @@ record DatabasePrimitiveTypeImpl<T>(String typeString, int type, Getter<T> gette
             };
         }
     }
-    
+
     @FunctionalInterface
     interface Setter<T> {
         void set(PreparedStatement statement, int index, T value) throws SQLException;

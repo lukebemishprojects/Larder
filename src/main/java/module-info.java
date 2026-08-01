@@ -12,7 +12,6 @@ module dev.lukebemish.larder {
     // Javalin openapi and docs
     requires javalin.openapi.plugin;
     requires javalin.swagger.plugin;
-    requires javalin.redoc.plugin;
 
     // Template processing
     requires io.pebbletemplates;

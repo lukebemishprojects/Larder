@@ -1,6 +1,5 @@
 package dev.lukebemish.larder;
 
-import dev.lukebemish.larder.api.UserCapability;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.schema.Repository;
 import dev.lukebemish.larder.schema.RepositoryIndex;
@@ -18,9 +17,6 @@ import io.pebbletemplates.pebble.template.PebbleTemplate;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.sql.SQLException;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -78,21 +74,22 @@ public class Indices {
                 status = "404",
                 description = "Repository or path not found"
             )
-        }
+        },
+        tags = {"Indices"}
     )
     public void listAt(Context context, String path, String repositoryName, boolean allowEmpty) throws SQLException {
-        var repositoryId = Identifier.of(new Repository.Id(repositoryName));
-        var parent = Identifier.of(new RepositoryIndex.Id(repositoryId, path, "../"));
         var matching = context.appData(Larder.CONNECTION_KEY).transact(c -> {
-            var index = c.find(parent);
+            var repositoryId = new Repository.ByName(repositoryName);
+            var repository = c.select(repositoryId);
+            if (repository.isEmpty()) {
+                throw new NotFoundResponse();
+            }
+            var parent = new RepositoryIndex.ByUnique(Identifier.of(repository.getFirst()), path, "../");
+            var index = c.select(parent);
             if (index.isEmpty()) {
                 if (allowEmpty) {
-                    var repository = c.find(repositoryId);
-                    if (repository.isEmpty()) {
-                        throw new NotFoundResponse();
-                    }
                     var newIndex = new RepositoryIndex(
-                        repositoryId,
+                        Identifier.of(repository.getFirst()),
                         path,
                         "../",
                         true,
@@ -106,7 +103,7 @@ public class Indices {
                 }
             }
             return new ArrayList<>(context.appData(Larder.CONNECTION_KEY).select(new RepositoryIndex.ByRepositoryAndPath(
-                repositoryId, path
+                Identifier.of(repository.getFirst()), path
             )));
         });
         matching.sort(
@@ -143,7 +140,8 @@ public class Indices {
                 content = @OpenApiContent(from = IndexEntry[].class, mimeType = ContentType.JSON),
                 description = "Index of available repositories"
             )
-        }
+        },
+        tags = {"Indices"}
     )
     public void listRepositories(Context context) throws SQLException {
         var repos = new ArrayList<>(context.appData(Larder.CONNECTION_KEY).select(Repository.REPRESENTATION));

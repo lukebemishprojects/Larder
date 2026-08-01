@@ -1,5 +1,6 @@
 package dev.lukebemish.larder.api;
 
+import dev.lukebemish.larder.utils.Enums;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.JsonParser;
@@ -39,6 +40,7 @@ import static java.lang.constant.ConstantDescs.*;
  */
 @JsonSerialize(as = Locations.class)
 @JsonDeserialize(using = LocationDeserializer.class)
+@Enums.EnumIsh
 public sealed interface Location permits Locations {
     String name();
     Path location();
@@ -196,11 +198,11 @@ final class LocationDeserializer extends ValueDeserializer<Location> {
     public Location deserialize(JsonParser p, DeserializationContext ctxt) throws JacksonException {
         LocationsInitializer.checkFailure();
         var string = ctxt.readValue(p, String.class);
-        try {
-            return Location.valueOf(string);
-        } catch (IllegalArgumentException e) {
+        Location location = Enums.tryValueOf(string);
+        if (location == null) {
             throw UnrecognizedPropertyException.from(p, LocationsInitializer.LOCATIONS, string, Arrays.stream(Location.values()).<Object>map(Location::name).toList());
         }
+        return location;
     }
 }
 

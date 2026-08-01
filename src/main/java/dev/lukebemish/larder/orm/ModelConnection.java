@@ -56,7 +56,7 @@ public class ModelConnection {
 
     @SuppressWarnings("unchecked")
     private <T extends Model> Representation<T> locate(Class<T> clazz) {
-        return (Representation<T>) located.computeIfAbsent(clazz, k -> Representation.locate((Class<? extends Model>) k));
+        return (Representation<T>) located.computeIfAbsent(clazz, k -> Representation.expensiveLocate((Class<? extends Model>) k));
     }
 
     @PolymorphicSignature("$select")
@@ -66,8 +66,8 @@ public class ModelConnection {
         return representation.select(this);
     }
 
-    public <T extends Model> T select(Identifier<T> identifier) throws SQLException {
-        return locate(identifier.clazz).select(this, identifier);
+    public <T extends Model.Object> T select(Identifier<T> identifier) throws SQLException {
+        return Representation.select(locate(identifier.clazz), this, identifier);
     }
 
     @PolymorphicSignature("$located")
@@ -79,15 +79,15 @@ public class ModelConnection {
     @PolymorphicSignature("$delete")
     public native <T extends Model, V extends Partial.Value<T, V>> void delete(Partial.Value<T, V> value) throws SQLException;
 
-    public <T extends Model> void delete(Identifier<T> identifier) throws SQLException {
-        locate(identifier.clazz).delete(this, identifier);
+    public <T extends Model.Object> void delete(Identifier<T> identifier) throws SQLException {
+        Representation.delete(locate(identifier.clazz), this, identifier);
     }
 
     @PolymorphicSignature("$located")
     public native  <T extends Model> void insert(T value) throws SQLException;
 
-    public <T extends Model> Optional<T> find(Identifier<T> identifier) throws SQLException {
-        return locate(identifier.clazz).find(this, identifier);
+    public <T extends Model.Object> Optional<T> find(Identifier<T> identifier) throws SQLException {
+        return Representation.find(locate(identifier.clazz), this, identifier);
     }
 
     public void migrate(Migrations migrations, int targetVersion) throws SQLException {
@@ -101,8 +101,8 @@ public class ModelConnection {
     @SuppressWarnings("unchecked")
     public static CallSite $located(MethodHandles.Lookup lookup, String name, MethodType descriptor) throws NoSuchMethodException, IllegalAccessException {
         Class<? extends Model> modelType = (Class<? extends Model>) descriptor.parameterType(1);
-        var handle = MethodHandles.lookup().unreflect(Representation.class.getDeclaredMethod(name, ModelConnection.class, Model.class));
-        var representation = Representation.locate(modelType);
+        var handle = MethodHandles.lookup().unreflect(Representation.class.getDeclaredMethod(name, Representation.class, ModelConnection.class, Model.class));
+        var representation = Representation.expensiveLocate(modelType);
         return new ConstantCallSite(handle.bindTo(representation).asType(descriptor));
     }
 
@@ -110,14 +110,14 @@ public class ModelConnection {
         var partialValueType = descriptor.parameterType(1);
         var handle = MethodHandles.lookup().findVirtual(Representation.class, "select", MethodType.methodType(List.class, ModelConnection.class, Partial.Value.class));
         Class<? extends Model> foundModelType = findModelType(partialValueType);
-        return new ConstantCallSite(handle.bindTo(Representation.locate(foundModelType)).asType(descriptor));
+        return new ConstantCallSite(handle.bindTo(Representation.expensiveLocate(foundModelType)).asType(descriptor));
     }
 
     public static CallSite $delete(MethodHandles.Lookup lookup, String name, MethodType descriptor) throws NoSuchMethodException, IllegalAccessException {
         var partialValueType = descriptor.parameterType(1);
         var handle = MethodHandles.lookup().findVirtual(Representation.class, "delete", MethodType.methodType(void.class, ModelConnection.class, Partial.Value.class));
         Class<? extends Model> foundModelType = findModelType(partialValueType);
-        return new ConstantCallSite(handle.bindTo(Representation.locate(foundModelType)).asType(descriptor));
+        return new ConstantCallSite(handle.bindTo(Representation.expensiveLocate(foundModelType)).asType(descriptor));
     }
 
     @SuppressWarnings("unchecked")

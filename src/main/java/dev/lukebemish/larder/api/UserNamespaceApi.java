@@ -9,8 +9,8 @@ import java.util.UUID;
 public record UserNamespaceApi(UUID id, String namespace, boolean confirmed) {
     public static UserNamespaceApi from(UserNamespace userNamespace) {
         return new UserNamespaceApi(
-            Identifier.<User, User.Id>template(userNamespace.id()).id(),
-            userNamespace.namespace(),
+            userNamespace.source().id(),
+            userNamespace.value(),
             userNamespace.confirmed()
         );
     }

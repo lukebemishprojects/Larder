@@ -4,6 +4,7 @@ import dev.lukebemish.larder.Backend;
 import dev.lukebemish.larder.orm.DatabasePrimitiveType;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.Model;
+import dev.lukebemish.larder.orm.Partial;
 import dev.lukebemish.larder.orm.Representation;
 
 public record S3Backend(
@@ -12,16 +13,21 @@ public record S3Backend(
     String endpoint,
     String accessKeyId,
     String secretAccessKey
-) implements Model, Backend<S3BackendConfiguration> {
-    public record Id(Identifier<RepositoryBackend> id) implements Identifier.Template<S3Backend> {}
+) implements Model.Extension<RepositoryBackend>, Backend<S3BackendConfiguration> {
+    public static final Partial<S3Backend, S3Backend.ById> BY_ID = new Partial<>("by_id");
+    public record ById(Identifier<RepositoryBackend> id) implements Model.Extension.ByHost<RepositoryBackend, S3Backend, S3Backend.ById> {
+        @Override
+        public Partial<S3Backend, S3Backend.ById> type() {
+            return BY_ID;
+        }
+    }
 
-    public static final Representation<S3Backend> REPRESENTATION = Representation.build(it -> {
-        var id = it.referenceField("id", () -> RepositoryBackend.REPRESENTATION, S3Backend::id);
+    public static final Representation<S3Backend> REPRESENTATION = Representation.build(() -> RepositoryBackend.REPRESENTATION, (it, id) -> {
         var region = it.field("region", DatabasePrimitiveType.VARCHAR, S3Backend::region);
         var endpoint = it.field("endpoint", DatabasePrimitiveType.VARCHAR, S3Backend::endpoint);
         var accessKeyId = it.field("accesskeyid", DatabasePrimitiveType.VARCHAR, S3Backend::accessKeyId);
         var secretAccessKey = it.field("secretaccesskey", DatabasePrimitiveType.VARCHAR, S3Backend::secretAccessKey);
-        it.id(id, Id::id);
+        it.partial(BY_ID);
         return it.build("s3backends", result -> new S3Backend(
                 id.get(result),
                 region.get(result),

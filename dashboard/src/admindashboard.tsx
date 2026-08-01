@@ -172,6 +172,10 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                 <div class="text-slate-600">Mutable Repository</div>
             </div>
             <div class="flex flex-row gap-2.5 items-center">
+                <input type="checkbox" checked={props.value.supportssnapshots} onchange={(e) => props.set("supportssnapshots", e.target.checked)} />
+                <div class="text-slate-600">Supports Snapshots</div>
+            </div>
+            <div class="flex flex-row gap-2.5 items-center">
                 <input type="checkbox" checked={props.value.expirationdays > 0} onchange={(e) => {
                     if (e.target.checked && props.value.expirationdays == 0) {
                         props.set("expirationdays", 30);

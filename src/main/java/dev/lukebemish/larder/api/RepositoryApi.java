@@ -22,6 +22,7 @@ public record RepositoryApi(
     @JsonProperty("supportspublishportal") @OpenApiName("supportspublishportal") boolean supportsPublishPortal,
     @JsonProperty("expirationdays") @OpenApiName("expirationdays") int expirationDays,
     boolean mutable,
+    @JsonProperty("supportssnapshots") @OpenApiName("supportssnapshots") boolean supportsSnapshots,
     UUID backend,
     @JsonProperty("s3backend") @OpenApiName("s3backend") @JsonInclude(JsonInclude.Include.NON_ABSENT) @Nullable S3BackendConfigurationApi s3Backend,
     @JsonProperty("filesystembackend") @OpenApiName("filesystembackend") @JsonInclude(JsonInclude.Include.NON_ABSENT) @Nullable FilesystemBackendConfigurationApi filesystemBackend
@@ -32,12 +33,12 @@ public record RepositoryApi(
         FilesystemBackendConfigurationApi filesystemBackend = null;
         switch (backend.type()) {
             case RepositoryBackendType.S3 -> {
-                var configuration = connection.select(Identifier.of(new S3BackendConfiguration.Id(Identifier.of(repository))));
-                s3Backend = S3BackendConfigurationApi.from(configuration);
+                var configuration = connection.select(new S3BackendConfiguration.ById(Identifier.of(repository)));
+                s3Backend = S3BackendConfigurationApi.from(configuration.getFirst());
             }
             case RepositoryBackendType.FILESYSTEM -> {
-                var configuration = connection.select(Identifier.of(new FilesystemBackendConfiguration.Id(Identifier.of(repository))));
-                filesystemBackend = FilesystemBackendConfigurationApi.from(configuration);
+                var configuration = connection.select(new FilesystemBackendConfiguration.ById(Identifier.of(repository)));
+                filesystemBackend = FilesystemBackendConfigurationApi.from(configuration.getFirst());
             }
         }
         return new RepositoryApi(
@@ -46,7 +47,8 @@ public record RepositoryApi(
             repository.supportsPublishPortal(),
             repository.expirationDays(),
             repository.mutable(),
-            Identifier.<RepositoryBackend, RepositoryBackend.Id>template(repository.backend()).id(),
+            repository.supportsSnapshots(),
+            repository.backend().id(),
             s3Backend,
             filesystemBackend
         );

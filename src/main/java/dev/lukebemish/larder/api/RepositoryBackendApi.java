@@ -23,8 +23,8 @@ public record RepositoryBackendApi(
         S3BackendApi s3BackendData = null;
         FilesystemBackendApi filesystemBackendData = null;
         switch (backend.type()) {
-            case S3 -> s3BackendData = S3BackendApi.from(connection.select(Identifier.of(new S3Backend.Id(Identifier.of(backend)))));
-            case FILESYSTEM -> filesystemBackendData = FilesystemBackendApi.from(connection.select(Identifier.of(new FilesystemBackend.Id(Identifier.of(backend)))));
+            case S3 -> s3BackendData = S3BackendApi.from(connection.select(new S3Backend.ById(Identifier.of(backend))).getFirst());
+            case FILESYSTEM -> filesystemBackendData = FilesystemBackendApi.from(connection.select(new FilesystemBackend.ById(Identifier.of(backend))).getFirst());
         }
         return new RepositoryBackendApi(
             backend.id(),

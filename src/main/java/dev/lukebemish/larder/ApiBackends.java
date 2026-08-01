@@ -21,12 +21,13 @@ import io.javalin.openapi.OpenApiContent;
 import io.javalin.openapi.OpenApiParam;
 import io.javalin.openapi.OpenApiRequestBody;
 import io.javalin.openapi.OpenApiResponse;
+import io.javalin.openapi.OpenApiSecurity;
 
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.UUID;
 
-final class ApiMethodsBackend {
+final class ApiBackends {
     @OpenApi(
         path = "/dashboard/admin/api/backends",
         methods = HttpMethod.GET,
@@ -37,10 +38,12 @@ final class ApiMethodsBackend {
                 from = RepositoryBackendApi[].class
             ),
             description = "Available backends"
-        )
+        ),
+        security = @OpenApiSecurity(name = "dashboardCookie"),
+        tags = {"Dashboard"}
     )
     public static void listBackends(Context context) throws SQLException {
-        ApiMethods.connection(context).transact(c -> {
+        Api.connection(context).transact(c -> {
             context.json(
                 c.select(RepositoryBackend.REPRESENTATION)
                     .stream().map(b -> {
@@ -69,13 +72,15 @@ final class ApiMethodsBackend {
                 description = "The backend"
             ),
             @OpenApiResponse(status = "404", description = "Backend not found", content = @OpenApiContent(from = ApiError.class))
-        }
+        },
+        security = @OpenApiSecurity(name = "dashboardCookie"),
+        tags = {"Dashboard"}
     )
     public static void getBackend(Context context) throws SQLException {
         var backendId = context.pathParamAsClass("id", UUID.class)
             .getOrThrow(m -> new BadRequestResponse("Not a UUID: "+m.get("value")));
-        context.json(ApiMethods.connection(context).transact(connection -> {
-            var backend = connection.find(Identifier.of(new RepositoryBackend.Id(backendId)));
+        context.json(Api.connection(context).transact(connection -> {
+            var backend = connection.find(Identifier.of(RepositoryBackend.REPRESENTATION, backendId));
 
             if (backend.isEmpty()) {
                 throw new NotFoundResponse("Backend not found");
@@ -99,13 +104,15 @@ final class ApiMethodsBackend {
                 description = "Backend deleted"
             ),
             @OpenApiResponse(status = "404", description = "Backend not found", content = @OpenApiContent(from = ApiError.class))
-        }
+        },
+        security = @OpenApiSecurity(name = "dashboardCookie"),
+        tags = {"Dashboard"}
     )
     public static void removeBackend(Context context) throws SQLException {
         var backendUUID = context.pathParamAsClass("id", UUID.class)
             .getOrThrow(m -> new BadRequestResponse("Not a UUID: "+m.get("value")));
-        ApiMethods.connection(context).transact(connection -> {
-            var backendId = Identifier.of(new RepositoryBackend.Id(backendUUID));
+        Api.connection(context).transact(connection -> {
+            var backendId = Identifier.of(RepositoryBackend.REPRESENTATION, backendUUID);
             var inUse = connection.select(new Repository.ByBackend(backendId));
             if (!inUse.isEmpty()) {
                 throw new BadRequestResponse("Cannot delete backend still in use by repositories");
@@ -114,8 +121,6 @@ final class ApiMethodsBackend {
             if (found.isEmpty()) {
                 throw new  NotFoundResponse("Backend not found");
             }
-            connection.delete(Identifier.of(new S3Backend.Id(backendId)));
-            connection.delete(Identifier.of(new FilesystemBackend.Id(backendId)));
             connection.delete(backendId);
             context.status(HttpStatus.NO_CONTENT);
         });
@@ -134,13 +139,15 @@ final class ApiMethodsBackend {
             ),
             @OpenApiResponse(status = "404", description = "Existing repository backend configuration not found", content = @OpenApiContent(from = ApiError.class)),
         },
-        requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = RepositoryBackendApi.class), required = true)
+        requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = RepositoryBackendApi.class), required = true),
+        security = @OpenApiSecurity(name = "dashboardCookie"),
+        tags = {"Dashboard"}
     )
     public static void updateBackend(Context context) throws SQLException {
         var backendUUID = context.pathParamAsClass("id", UUID.class)
             .getOrThrow(m -> new BadRequestResponse("Not a UUID: "+m.get("value")));
-        var backendId = Identifier.of(new RepositoryBackend.Id(backendUUID));
-        ApiMethods.connection(context).transact(c -> {
+        var backendId = Identifier.of(RepositoryBackend.REPRESENTATION, backendUUID);
+        Api.connection(context).transact(c -> {
             var existing = c.find(backendId);
             if (existing.isEmpty()) {
                 throw new NotFoundResponse("Backend not found");
@@ -157,16 +164,16 @@ final class ApiMethodsBackend {
                     if (backend.s3Backend() == null) {
                         throw new BadRequestResponse("No S3 backend configuration provided");
                     }
-                    var existingConfig = c.find(Identifier.of(new S3Backend.Id(backendId)));
+                    var existingConfig = c.select(new S3Backend.ById(backendId));
                     if (existingConfig.isEmpty()) {
                         throw new NotFoundResponse("S3 backend configuration not found");
                     }
                     var secretAccessKey = backend.s3Backend().secretAccessKey();
                     if (secretAccessKey == null) {
-                        secretAccessKey = existingConfig.get().secretAccessKey();
+                        secretAccessKey = existingConfig.getFirst().secretAccessKey();
                     }
                     var newS3Config = new S3Backend(
-                        existingConfig.get().id(),
+                        existingConfig.getFirst().id(),
                         backend.s3Backend().region(),
                         backend.s3Backend().endpoint(),
                         backend.s3Backend().accessKeyId(),
@@ -178,12 +185,12 @@ final class ApiMethodsBackend {
                     if (backend.filesystemBackend() == null) {
                         throw new BadRequestResponse("No filesystem backend configuration provided");
                     }
-                    var existingConfig = c.find(Identifier.of(new FilesystemBackend.Id(backendId)));
+                    var existingConfig = c.select(new FilesystemBackend.ById(backendId));
                     if (existingConfig.isEmpty()) {
                         throw new NotFoundResponse("Filesystem backend configuration not found");
                     }
                     var newFilesystemConfig = new FilesystemBackend(
-                        existingConfig.get().id(),
+                        existingConfig.getFirst().id(),
                         backend.filesystemBackend().location()
                     );
                     c.update(newFilesystemConfig);
@@ -205,10 +212,12 @@ final class ApiMethodsBackend {
                 content = @OpenApiContent(from = ApiIdentifyingSuccess.class)
             )
         },
-        requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = RepositoryBackendApi.class), required = true)
+        requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = RepositoryBackendApi.class), required = true),
+        security = @OpenApiSecurity(name = "dashboardCookie"),
+        tags = {"Dashboard"}
     )
     public static void createBackend(Context context) throws SQLException {
-        ApiMethods.connection(context).transact(c -> {
+        Api.connection(context).transact(c -> {
             var backend = context.bodyAsClass(RepositoryBackendApi.class);
             var backendId = UUID.randomUUID();
             var repoBackend = new RepositoryBackend(backendId, backend.type());
@@ -256,7 +265,9 @@ final class ApiMethodsBackend {
                 from = String[].class
             ),
             description = "Available filesystem backend locations"
-        )
+        ),
+        security = @OpenApiSecurity(name = "dashboardCookie"),
+        tags = {"Dashboard"}
     )
     public static void listFilesystemLocations(Context context) {
         context.json(Arrays.stream(Location.values()).toList());

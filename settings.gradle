@@ -34,4 +34,23 @@ gradle.lifecycle.beforeProject { p ->
     }
 }
 
+dependencyResolutionManagement {
+    repositories {
+        mavenCentral()
+        exclusiveContent {
+            forRepository {
+                maven {
+                    url = "https://libraries.minecraft.net"
+                }
+            }
+            filter {
+                includeGroupAndSubgroups("com.mojang")
+            }
+        }
+    }
+    repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
+}
+
 rootProject.name = 'larder'
+
+include('processor')
