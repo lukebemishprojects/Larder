@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.Optional;
 
 public record FilesystemBackendApi(
-    @OpenApiPropertyType(definedBy = String.class, nullability = Nullability.NULLABLE) @JsonInclude(JsonInclude.Include.NON_ABSENT) Optional<Location> location
+    @OpenApiPropertyType(definedBy = String.class, nullability = Nullability.NULLABLE) @JsonInclude(JsonInclude.Include.NON_ABSENT) Optional<Location<?>> location
 ) {
     public static FilesystemBackendApi from(FilesystemBackend backend) {
         // Never expose the key here

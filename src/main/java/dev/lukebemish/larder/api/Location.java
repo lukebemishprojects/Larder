@@ -7,7 +7,6 @@ import tools.jackson.core.JsonGenerator;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.DeserializationContext;
-import tools.jackson.databind.JavaType;
 import tools.jackson.databind.SerializationContext;
 import tools.jackson.databind.ValueDeserializer;
 import tools.jackson.databind.ValueSerializer;
@@ -15,10 +14,11 @@ import tools.jackson.databind.annotation.JsonDeserialize;
 import tools.jackson.databind.annotation.JsonSerialize;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.type.TypeFactory;
 
+import java.io.Serializable;
 import java.lang.classfile.ClassFile;
 import java.lang.constant.ClassDesc;
+import java.lang.constant.Constable;
 import java.lang.constant.MethodTypeDesc;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -46,23 +46,24 @@ import static java.lang.constant.ConstantDescs.*;
 @JsonSerialize(using = LocationSerializer.class)
 @JsonDeserialize(using = LocationDeserializer.class)
 @Enums.EnumIsh
-public sealed interface Location permits Locations {
+public sealed interface Location<L extends Location<L>> extends Comparable<L>, Constable, Serializable permits Locations {
     String name();
+    int ordinal();
     Path location();
 
-    static Location[] values() {
+    static Location<?>[] values() {
         LocationsInitializer.checkFailure();
         try {
-            return (Location[]) LocationsInitializer.VALUES.invoke();
+            return (Location<?>[]) LocationsInitializer.VALUES.invoke();
         } catch (Throwable e) {
             throw e instanceof RuntimeException runtimeException ? runtimeException : new RuntimeException(e);
         }
     }
 
-    static Location valueOf(String string) {
+    static Location<?> valueOf(String string) {
         LocationsInitializer.checkFailure();
         try {
-            return (Location) LocationsInitializer.VALUE_OF.invoke(string);
+            return (Location<?>) LocationsInitializer.VALUE_OF.invoke(string);
         } catch (Throwable e) {
             throw e instanceof RuntimeException runtimeException ? runtimeException : new RuntimeException(e);
         }
@@ -198,12 +199,12 @@ final class LocationsInitializer {
     }
 }
 
-final class LocationDeserializer extends ValueDeserializer<Location> {
+final class LocationDeserializer extends ValueDeserializer<Location<?>> {
     @Override
-    public Location deserialize(JsonParser p, DeserializationContext ctxt) throws JacksonException {
+    public Location<?> deserialize(JsonParser p, DeserializationContext ctxt) throws JacksonException {
         LocationsInitializer.checkFailure();
         var string = ctxt.readValue(p, String.class);
-        Location location = Enums.tryValueOf(string);
+        Location<?> location = Enums.tryValueOf(string);
         if (location == null) {
             throw UnrecognizedPropertyException.from(p, LocationsInitializer.LOCATIONS, string, Arrays.stream(Location.values()).<Object>map(Location::name).toList());
         }
@@ -211,7 +212,7 @@ final class LocationDeserializer extends ValueDeserializer<Location> {
     }
 }
 
-final class LocationSerializer extends ValueSerializer<Location> {
+final class LocationSerializer extends ValueSerializer<Location<?>> {
     @Override
     public void serialize(Location value, JsonGenerator gen, SerializationContext ctxt) throws JacksonException {
         LocationsInitializer.checkFailure();
@@ -219,7 +220,7 @@ final class LocationSerializer extends ValueSerializer<Location> {
     }
 }
 
-enum Locations implements Location {
+enum Locations implements Location<Locations> {
     ;
     private final Path location;
 
