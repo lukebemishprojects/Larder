@@ -1,4 +1,4 @@
-FROM node:26.5.0-alpine3.24 AS nodejsbuilder
+FROM node:26.5.1-alpine3.24 AS nodejsbuilder
 WORKDIR /opt/larder
 COPY --exclude=dist --exclude=node_modules ./dashboard/ ./dashboard/
 COPY --exclude=dist --exclude=node_modules ./indices/ ./indices/
