@@ -3,6 +3,7 @@ services:
     container_name: minio
     image: minio/minio:latest
     restart: on-failure
+    user: ${MY_UID}:${MY_GID}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -16,6 +17,7 @@ services:
     container_name: larder-postgres
     image: postgres:17-alpine
     restart: on-failure
+    user: ${MY_UID}:${MY_GID}
     ports:
       - "5432:5432"
     environment:
@@ -36,6 +38,7 @@ services:
     container_name: nanoidp
     image: ghcr.io/cdelmonte-zg/nanoidp:v2.5.0
     restart: on-failure
+    user: ${MY_UID}:${MY_GID}
     ports:
       - "8282:8282"
     environment:

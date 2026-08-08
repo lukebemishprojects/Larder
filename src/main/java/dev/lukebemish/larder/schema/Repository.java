@@ -6,13 +6,17 @@ import dev.lukebemish.larder.orm.Model;
 import dev.lukebemish.larder.orm.Partial;
 import dev.lukebemish.larder.orm.Representation;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public record Repository(
     UUID id,
     String name,
     boolean supportsMavenDeploy,
+
     boolean supportsPublishPortal,
+    Optional<Identifier<RepositoryBackend>> deploymentBackend,
+
     int expirationDays,
     boolean mutable,
     Identifier<RepositoryBackend> backend,
@@ -37,7 +41,10 @@ public record Repository(
     public static final Representation<Repository> REPRESENTATION = Representation.build((it, id) -> {
         var name = it.field("name", DatabasePrimitiveType.VARCHAR, Repository::name);
         var supportsMavenDeploy = it.field("supportsmavendeploy", DatabasePrimitiveType.BOOLEAN, Repository::supportsMavenDeploy);
+
         var supportsPublishPortal = it.field("supportspublishportal", DatabasePrimitiveType.BOOLEAN, Repository::supportsPublishPortal);
+        var deploymentBackend = it.optionalReferenceField("deploymentbackend", () -> RepositoryBackend.REPRESENTATION, Repository::deploymentBackend);
+
         var expirationDays = it.field("expirationdays", DatabasePrimitiveType.INTEGER, Repository::expirationDays);
         var mutable = it.field("mutable", DatabasePrimitiveType.BOOLEAN, Repository::mutable);
         var backend = it.referenceField("backend", () -> RepositoryBackend.REPRESENTATION, Repository::backend);
@@ -49,13 +56,14 @@ public record Repository(
         it.partial(BY_NAME, name, ByName::name);
 
         return it.build("repositories", result -> new Repository(
-                id.get(result),
-                name.get(result),
-                supportsMavenDeploy.get(result),
-                supportsPublishPortal.get(result),
-                expirationDays.get(result),
-                mutable.get(result),
-                backend.get(result),
+            id.get(result),
+            name.get(result),
+            supportsMavenDeploy.get(result),
+            supportsPublishPortal.get(result),
+            deploymentBackend.get(result),
+            expirationDays.get(result),
+            mutable.get(result),
+            backend.get(result),
             snapshots.get(result)
         ));
     });

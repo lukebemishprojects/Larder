@@ -1,6 +1,7 @@
 package dev.lukebemish.larder.orm;
 
 import dev.lukebemish.polymorphicsignatures.PolymorphicSignature;
+import org.jspecify.annotations.Nullable;
 
 import java.lang.invoke.CallSite;
 import java.lang.invoke.ConstantCallSite;
@@ -54,7 +55,7 @@ public final class Identifier<T extends Model.Object> {
     }
 
     @Override
-    public boolean equals(Object object) {
+    public boolean equals(@Nullable Object object) {
         if (!(object instanceof Identifier<?> that)) return false;
         return Objects.equals(id, that.id) && Objects.equals(clazz, that.clazz);
     }

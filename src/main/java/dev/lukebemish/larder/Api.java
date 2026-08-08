@@ -36,6 +36,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -282,8 +283,8 @@ final class Api {
             var id = Identifier.of(found.getFirst());
             var backend  = connection.select(found.getFirst().backend());
             switch (backend.type()) {
-                case RepositoryBackendType.S3 -> connection.delete(new S3BackendConfiguration.ById(id));
-                case RepositoryBackendType.FILESYSTEM -> connection.delete(new FilesystemBackendConfiguration.ById(id));
+                case RepositoryBackendType.S3 -> connection.delete(new S3BackendConfiguration.ById(id, Identifier.of(backend)));
+                case RepositoryBackendType.FILESYSTEM -> connection.delete(new FilesystemBackendConfiguration.ById(id, Identifier.of(backend)));
             }
             connection.delete(new RepositoryIndex.ByRepository(id)); // delete all indices
             connection.delete(new TokenRepository.ByRepository(id)); // delete all associations of keys with this repository
@@ -452,6 +453,18 @@ final class Api {
             if (newBackend.isEmpty()) {
                 throw new NotFoundResponse("Backend not found");
             }
+
+            var deploymentBackendId = repository.deploymentBackend() == null ? null : Identifier.of(RepositoryBackend.REPRESENTATION, repository.deploymentBackend());
+            RepositoryBackend newDeploymentBackend = null;
+            if (deploymentBackendId != null) {
+                var found = c.find(deploymentBackendId);
+                if (found.isEmpty()) {
+                    throw new NotFoundResponse("Deployment backend not found");
+                } else {
+                    newDeploymentBackend = found.get();
+                }
+            }
+
             var existing = c.select(new Repository.ByName(name));
             Identifier<Repository> repositoryId = existing.isEmpty() ? Identifier.of(Repository.REPRESENTATION, UUID.randomUUID()) : Identifier.of(existing.getFirst());
             var repositoryUpdated = new Repository(
@@ -459,6 +472,7 @@ final class Api {
                 repository.name(),
                 repository.supportsMavenDeploy(),
                 repository.supportsPublishPortal(),
+                Optional.ofNullable(deploymentBackendId),
                 repository.expirationDays(),
                 repository.mutable(),
                 backendId,
@@ -471,8 +485,15 @@ final class Api {
                 if (!existing.getFirst().backend().equals(backendId)) {
                     var backendActual = c.select(existing.getFirst().backend());
                     switch (backendActual.type()) {
-                        case RepositoryBackendType.S3 -> c.delete(new S3BackendConfiguration.ById(repositoryId));
-                        case RepositoryBackendType.FILESYSTEM -> c.delete(new FilesystemBackendConfiguration.ById(repositoryId));
+                        case RepositoryBackendType.S3 -> c.delete(new S3BackendConfiguration.ById(repositoryId, Identifier.of(backendActual)));
+                        case RepositoryBackendType.FILESYSTEM -> c.delete(new FilesystemBackendConfiguration.ById(repositoryId, Identifier.of(backendActual)));
+                    }
+                }
+                if (existing.getFirst().deploymentBackend().isPresent() && !existing.getFirst().deploymentBackend().get().equals(deploymentBackendId)) {
+                    var backendActual = c.select(existing.getFirst().deploymentBackend().get());
+                    switch (backendActual.type()) {
+                        case RepositoryBackendType.S3 -> c.delete(new S3BackendConfiguration.ById(repositoryId, Identifier.of(backendActual)));
+                        case RepositoryBackendType.FILESYSTEM -> c.delete(new FilesystemBackendConfiguration.ById(repositoryId, Identifier.of(backendActual)));
                     }
                 }
             }
@@ -487,7 +508,7 @@ final class Api {
                         repository.s3Backend().bucket(),
                         repository.s3Backend().prefix()
                     );
-                    var existingConfig = c.select(new S3BackendConfiguration.ById(repositoryId));
+                    var existingConfig = c.select(new S3BackendConfiguration.ById(repositoryId, backendId));
                     if (existingConfig.isEmpty()) {
                         c.insert(config);
                     } else {
@@ -503,7 +524,7 @@ final class Api {
                         backendId,
                         repository.filesystemBackend().prefix()
                     );
-                    var existingConfig = c.select(new FilesystemBackendConfiguration.ById(repositoryId));
+                    var existingConfig = c.select(new FilesystemBackendConfiguration.ById(repositoryId, backendId));
                     if (existingConfig.isEmpty()) {
                         c.insert(config);
                     } else {
@@ -511,6 +532,45 @@ final class Api {
                     }
                 }
             }
+
+            if (newDeploymentBackend != null) {
+                switch (newDeploymentBackend.type()) {
+                    case RepositoryBackendType.S3 -> {
+                        if (repository.deploymentS3Backend() == null) {
+                            throw new BadRequestResponse("No deployment S3 backend configuration provided");
+                        }
+                        var config = new S3BackendConfiguration(
+                            repositoryId,
+                            deploymentBackendId,
+                            repository.deploymentS3Backend().bucket(),
+                            repository.deploymentS3Backend().prefix()
+                        );
+                        var existingConfig = c.select(new S3BackendConfiguration.ById(repositoryId, deploymentBackendId));
+                        if (existingConfig.isEmpty()) {
+                            c.insert(config);
+                        } else {
+                            c.update(config);
+                        }
+                    }
+                    case RepositoryBackendType.FILESYSTEM -> {
+                        if (repository.deploymentFilesystemBackend() == null) {
+                            throw new BadRequestResponse("No deployment filesystem backend configuration provided");
+                        }
+                        var config = new FilesystemBackendConfiguration(
+                            repositoryId,
+                            deploymentBackendId,
+                            repository.deploymentFilesystemBackend().prefix()
+                        );
+                        var existingConfig = c.select(new FilesystemBackendConfiguration.ById(repositoryId, deploymentBackendId));
+                        if (existingConfig.isEmpty()) {
+                            c.insert(config);
+                        } else {
+                            c.update(config);
+                        }
+                    }
+                }
+            }
+
             context.json(new ApiSuccess());
         });
     }

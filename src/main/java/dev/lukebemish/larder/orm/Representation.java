@@ -200,6 +200,60 @@ public final class Representation<T extends Model> {
         }
     }
 
+    public static final class OptionalReferenceField<T extends Model, F extends Model.Object> extends Field<T, Optional<Identifier<F>>> {
+        private final Supplier<Representation<F>> referenceRepresentation;
+
+        private OptionalReferenceField(String name, Function<T, Optional<Identifier<F>>> encoder, Supplier<Representation<F>> referenceRepresentation, Object schemaKey) {
+            super(name, encoder, schemaKey);
+            this.referenceRepresentation = referenceRepresentation;
+        }
+
+        @Override
+        List<Representation<?>> references() {
+            return List.of(referenceRepresentation.get());
+        }
+
+        @Override
+        List<String> definitionSchema(String name) {
+            return List.of(
+                String.format("%s %s", name, DatabasePrimitiveType.UUID.typeString())
+            );
+        }
+
+        @Override
+        List<String> constraintSchema(String name) {
+            return List.of(String.format(
+                "FOREIGN KEY (%s) REFERENCES %s (%s)",
+                name, referenceRepresentation.get().tableName, "id"
+            ));
+        }
+
+        @Override
+        List<String> uniqueSchema(String name) {
+            return List.of(
+                String.format("UNIQUE (%s)", name)
+            );
+        }
+
+        @Override
+        Optional<Identifier<F>> get(ResultSet resultSet, int startAt) throws SQLException {
+            var uuid = DatabasePrimitiveType.UUID.get(resultSet, startAt);
+            if (resultSet.wasNull()) {
+                return Optional.empty();
+            }
+            return Optional.of(new Identifier<>(Objects.requireNonNull(uuid), referenceRepresentation.get().clazz));
+        }
+
+        @Override
+        void write(int offset, PreparedStatement statement, Optional<Identifier<F>> value) throws SQLException {
+            if (value.isPresent()) {
+                DatabasePrimitiveType.UUID.set(statement, offset, value.get().id);
+            } else {
+                statement.setNull(offset, DatabasePrimitiveType.UUID.type());
+            }
+        }
+    }
+
     private World world() {
         return Objects.requireNonNull(world.updateAndGet(old -> {
             if (old != null) return old;
@@ -742,6 +796,12 @@ public final class Representation<T extends Model> {
             return field;
         }
 
+        public <F extends Model.Object> OptionalReferenceField<T, F> optionalReferenceField(String name, Supplier<Representation<F>> reference, Function<T, Optional<Identifier<F>>> encoder) {
+            var field = new OptionalReferenceField<>(name, encoder, reference, schemaKey);
+            fields.add(field);
+            return field;
+        }
+
         public <G> FieldGroup<T, G> grouped(String name, Function<T, G> partial, Function<GroupedFieldBuilder<T, G>, FieldGroup<T, G>> builder) {
             var groupedBuilder = new GroupedFieldBuilder<>(this, partial, name);
             return builder.apply(groupedBuilder);
@@ -812,6 +872,13 @@ public final class Representation<T extends Model> {
                 return f;
             }
 
+            public <F extends Model.Object> OptionalReferenceField<T, F> optionalReferenceField(String name, Supplier<Representation<F>> reference, Function<G, Optional<Identifier<F>>> encoder) {
+                var f = delegate.optionalReferenceField(namePrefix + "_" + name, reference, partial.andThen(encoder));
+                fields.add(f);
+                fieldTypes.add(encoder);
+                return f;
+            }
+
             public FieldGroup<T, G> build(SQLFunction<Result, G> reconstructor) {
                 return new FieldGroup<>(reconstructor, fields, fieldTypes);
             }
@@ -875,6 +942,10 @@ public final class Representation<T extends Model> {
 
     public static <T extends Model, F extends Model.Object> Function<Builder<T>, ReferenceField<T, F>> referenceField(String name, Supplier<Representation<F>> reference, Function<T, Identifier<F>> encoder) {
         return it -> it.referenceField(name, reference, encoder);
+    }
+
+    public static <T extends Model, F extends Model.Object> Function<Builder<T>, OptionalReferenceField<T, F>> optionalReferenceField(String name, Supplier<Representation<F>> reference, Function<T, Optional<Identifier<F>>> encoder) {
+        return it -> it.optionalReferenceField(name, reference, encoder);
     }
 
     public static <T extends Model, F> Function<Builder<T>, OptionalField<T, F>> optionalField(String name, DatabasePrimitiveType<F> primitiveType, Function<T, Optional<F>> encoder) {

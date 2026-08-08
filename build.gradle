@@ -1,3 +1,4 @@
+import com.sun.security.auth.module.UnixSystem
 import dev.lukebemish.larder.buildtooling.JLinkTask
 
 plugins {
@@ -154,12 +155,22 @@ def testSysPropsMap = [
 ]
 
 tasks.register("stopDevDocker", Exec) {
+    def system = new UnixSystem()
+    environment([
+        "MY_UID": system.uid,
+        "MY_GID": system.gid,
+    ])
     commandLine("docker", "compose", "-f", "docker-compose.dev.yml", "down")
     workingDir = layout.projectDirectory
     outputs.upToDateWhen { false }
 }
 
 tasks.register("startDevDocker", Exec) {
+    def system = new UnixSystem()
+    environment([
+        "MY_UID": system.uid,
+        "MY_GID": system.gid,
+    ])
     commandLine("docker", "compose", "-f", "docker-compose.dev.yml", "up", "--remove-orphans", "--detach")
     workingDir = layout.projectDirectory
     outputs.upToDateWhen { false }
