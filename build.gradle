@@ -133,12 +133,11 @@ def testEnvMap = [
     LARDER_HOST: "http://localhost:8786",
     LARDER_PORT: "8786",
 
-    LARDER_OIDC_ISSUER: "http://localhost:8282/realms/demo",
+    LARDER_OIDC_ISSUER: "http://localhost:8282",
     LARDER_OIDC_CLIENT_ID: "larder",
-    LARDER_OIDC_CLIENT_SECRET: "M8MoOUmyzBBgRPvUsoAJcMsBZBpSqcNR",
+    LARDER_OIDC_CLIENT_SECRET: "cYKjUGzbO4-cdCbme02Gksq934zldTym41ozzrnVjY0",
 
-    LARDER_OIDC_ADDITIONAL_SCOPES: "roles",
-    LARDER_OIDC_ROLE_ADMIN: "\"admin\" in realm_access.roles",
+    LARDER_OIDC_ROLE_ADMIN: "\"ADMIN\" in userinfo.roles",
 
     LARDER_S3_REGION: "",
     LARDER_S3_ACCESS_KEY_ID: "minioadmin",
@@ -146,6 +145,10 @@ def testEnvMap = [
     LARDER_S3_ENDPOINT: "http://localhost:9000",
 
     LARDER_FILESYSTEM_BACKEND_LOCATIONS: "./dev-filesystem-backends.json"
+]
+
+def testSysPropsMap = [
+    "org.slf4j.simpleLogger.log.dev.lukebemish.larder.OIDCAuthenticator": "DEBUG"
 ]
 
 tasks.register("stopDevDocker", Exec) {
@@ -163,6 +166,7 @@ tasks.register("startDevDocker", Exec) {
 
 tasks.register("testDev", JavaExec) {
     environment(testEnvMap)
+    systemProperties(testSysPropsMap)
     workingDir = layout.projectDirectory
     mainModule = "dev.lukebemish.larder"
     classpath(configurations.applicationClasspath)
@@ -188,6 +192,7 @@ tasks.register("printSchemas", JavaExec) {
 
 tasks.register("testJlink", JavaExec) {
     environment(testEnvMap)
+    systemProperties(testSysPropsMap)
     workingDir = layout.projectDirectory
     mainModule = "dev.lukebemish.larder"
     executable = layout.buildDirectory.file("jlink/larder/bin/java").get()

@@ -1,0 +1,13 @@
+users:
+  user:
+    password: user
+    email: user@example.com
+    roles:
+    - USER
+  admin:
+    password: admin
+    email: admin@example.org
+    roles:
+    - USER
+    - ADMIN
+default_user: admin

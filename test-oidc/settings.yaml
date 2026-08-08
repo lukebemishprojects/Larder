@@ -1,0 +1,12 @@
+server:
+  host: "0.0.0.0"
+  port: 8282
+
+oauth:
+  issuer: http://localhost:8282
+  clients:
+  - client_id: larder
+    client_secret: cYKjUGzbO4-cdCbme02Gksq934zldTym41ozzrnVjY0
+    description: ''
+    redirect_uris:
+    - http://localhost:8786/login

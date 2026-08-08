@@ -8,12 +8,12 @@ services:
       - "9001:9001"
     command: "minio server --console-address 0.0.0.0:9001 /data"
     volumes:
-      - type: volume
-        source: minio-data
+      - type: bind
+        source: ./build/dev/minio/
         target: /data
 
-  postgres:
-    container_name: postgres
+  larder-postgres:
+    container_name: larder-postgres
     image: postgres:17-alpine
     restart: on-failure
     ports:
@@ -28,62 +28,19 @@ services:
       timeout: 5s
       retries: 6
     volumes:
-      - type: volume
-        source: larder-data
+      - type: bind
+        source: ./build/dev/larder-postgres/
         target: /var/lib/postgresql/data
 
-  keycloak-postgres:
-    container_name: keycloak-postgres
-    image: postgres:17-alpine
+  nanoidp:
+    container_name: nanoidp
+    image: ghcr.io/cdelmonte-zg/nanoidp:v2.5.0
     restart: on-failure
-    environment:
-      POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: keycloak
-      POSTGRES_DB: keycloak
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U keycloak" ]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-    networks:
-      - keycloak-database
-    volumes:
-      - type: volume
-        source: keycloak-data
-        target: /var/lib/postgresql/data
-
-  keycloak:
-    container_name: keycloak
-    depends_on:
-      keycloak-postgres:
-        condition: service_healthy
-    restart: on-failure
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: keycloak
-      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/keycloak
-    image: quay.io/keycloak/keycloak:26.4
-    command:
-      - start-dev
-      - --http-enabled=true
-      - --db=postgres
-      - --import-realm
-    networks:
-      - keycloak-database
     ports:
-      - "8282:8080"
+      - "8282:8282"
+    environment:
+      PORT: "8282"
     volumes:
       - type: bind
-        source: ./realm-export.json
-        target: /opt/keycloak/data/import/realm-export.json
-        read_only: true
-
-networks:
-  keycloak-database:
-
-volumes:
-  keycloak-data:
-  larder-data:
-  minio-data:
+        source: ./test-oidc
+        target: /app/config/

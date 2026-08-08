@@ -9,17 +9,14 @@ import dev.lukebemish.larder.api.UserCapability;
 import dev.lukebemish.larder.api.UserNamespaceApi;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.ModelConnection;
-import dev.lukebemish.larder.orm.Representation;
 import dev.lukebemish.larder.schema.Deployment;
-import dev.lukebemish.larder.schema.FilesystemBackend;
 import dev.lukebemish.larder.schema.FilesystemBackendConfiguration;
-import dev.lukebemish.larder.schema.TokenRepository;
 import dev.lukebemish.larder.schema.Package;
 import dev.lukebemish.larder.schema.Repository;
 import dev.lukebemish.larder.schema.RepositoryBackend;
 import dev.lukebemish.larder.schema.RepositoryIndex;
-import dev.lukebemish.larder.schema.S3Backend;
 import dev.lukebemish.larder.schema.S3BackendConfiguration;
+import dev.lukebemish.larder.schema.TokenRepository;
 import dev.lukebemish.larder.schema.User;
 import dev.lukebemish.larder.schema.UserNamespace;
 import io.javalin.http.BadRequestResponse;
@@ -76,7 +73,7 @@ final class Api {
         return Objects.requireNonNull(Objects.requireNonNull(identity).user());
     }
 
-    public static Set<Role> authenticatedRoles(Context context) {
+    public static Set<? extends Role> authenticatedRoles(Context context) {
         Larder.AuthInfo identity = context.attribute(Larder.AUTH_INFO_KEY);
         if (identity == null) {
             return Set.of();

@@ -9,6 +9,7 @@ import com.github.scribejava.core.builder.ServiceBuilder;
 import com.github.scribejava.core.builder.api.DefaultApi20;
 import com.github.scribejava.core.extractors.TokenExtractor;
 import com.github.scribejava.core.model.OAuth2AccessToken;
+import com.github.scribejava.core.model.OAuth2AccessTokenErrorResponse;
 import com.github.scribejava.core.model.OAuthRequest;
 import com.github.scribejava.core.model.Verb;
 import com.github.scribejava.core.oauth.AccessTokenRequestParams;
@@ -34,6 +35,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.core.json.JsonFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.exc.JsonNodeException;
 import tools.jackson.databind.node.ObjectNode;
 
 import javax.crypto.BadPaddingException;
@@ -256,14 +258,21 @@ final class OIDCAuthenticator {
 
         var jwtJson = validateJwt(redirectJwt);
         if (jwtJson == null) {
+            logger.debug("Could not validate JWT: {}", redirectJwt);
             throw new BadRequestResponse("Authentication failed");
         }
 
         var destination = jwtJson.get("destination").asString();
 
         try {
-            var token = (OpenIdOAuth2AccessToken) oauth2service.getAccessToken(new AccessTokenRequestParams(code)
-                .addExtraParameter("redirect_uri", this.redirectUrl));
+            OpenIdOAuth2AccessToken token;
+            try {
+                token = (OpenIdOAuth2AccessToken) oauth2service.getAccessToken(new AccessTokenRequestParams(code)
+                    .addExtraParameter("redirect_uri", this.redirectUrl));
+            } catch (OAuth2AccessTokenErrorResponse e) {
+                logger.debug("Failed to acquire access token", e);
+                throw new BadRequestResponse("Authentication failed");
+            }
 
             var idToken = token.getOpenIdToken();
 
@@ -271,6 +280,7 @@ final class OIDCAuthenticator {
             try {
                 idTokenJwt = idJwtParser.parseSignedClaims(idToken);
             } catch (JwtException e) {
+                logger.debug("Failed to acquire JWT access token", e);
                 throw new BadRequestResponse("Authentication failed");
             }
 
@@ -280,7 +290,7 @@ final class OIDCAuthenticator {
             var authType = token.getTokenType();
             if (!authType.toLowerCase(Locale.ROOT).equals("bearer")) {
                 // Must be bearer auth
-                logger.warn("OIDC provider gave non-bearer-auth access token of type '"+authType+"'; cannot use it to authenticate!");
+                logger.warn("{}'; cannot use it to authenticate!", "OIDC provider gave non-bearer-auth access token of type '" + authType);
                 throw new BadRequestResponse("Authentication failed");
             }
 
@@ -323,11 +333,15 @@ final class OIDCAuthenticator {
             // This requires knowing roles
 
             var idTokenClaimsJson = mapper.valueToTree(idTokenJwt.getPayload());
-            boolean isAdmin = false;
+            var infoForTest = mapper.createObjectNode();
+            infoForTest.set("token", idTokenClaimsJson);
+            infoForTest.set("userinfo", userInfoJson);
+            boolean isAdmin;
             try {
-                isAdmin = adminRoleExpression.evaluate(idTokenClaimsJson).asBoolean();
-            } catch (EvaluateException e) {
+                isAdmin = adminRoleExpression.evaluate(infoForTest).asBoolean();
+            } catch (EvaluateException | JsonNodeException | NullPointerException e) {
                 logger.warn("Could not evaluate role rule for 'admin': ", e);
+                throw new BadRequestResponse("Authentication failed");
             }
 
             var userJwt = userJwt(idToken, userUUID, isAdmin ? Set.of(Role.Builtin.ADMIN, Role.Builtin.USER) : Set.of(Role.Builtin.USER));
