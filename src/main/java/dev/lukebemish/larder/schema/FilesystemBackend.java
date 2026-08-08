@@ -7,7 +7,7 @@ import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.Model;
 import dev.lukebemish.larder.orm.Partial;
 import dev.lukebemish.larder.orm.Representation;
-import dev.lukebemish.larder.utils.Enums;
+import dev.lukebemish.polymorphicsignatures.utilities.EnumUtils;
 
 import java.util.Optional;
 
@@ -28,7 +28,7 @@ public record FilesystemBackend(
         it.partial(BY_ID);
         return it.build("filesystembackends", result -> new FilesystemBackend(
             id.get(result),
-            location.get(result).flatMap(name -> Optional.ofNullable(Enums.tryValueOf(name)))
+            location.get(result).flatMap(name -> Optional.ofNullable(EnumUtils.tryValueOf(name)))
         ));
     });
 }

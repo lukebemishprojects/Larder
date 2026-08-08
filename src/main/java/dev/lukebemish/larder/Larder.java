@@ -276,7 +276,7 @@ public class Larder {
         }
     }
 
-    public record AuthInfo(@Nullable Identifier<User> user, Set<Role> roles) {}
+    public record AuthInfo(@Nullable Identifier<User> user, Set<? extends Role> roles) {}
     public static final String AUTH_INFO_KEY = "auth_info";
 
     private void authenticate(Context context) {

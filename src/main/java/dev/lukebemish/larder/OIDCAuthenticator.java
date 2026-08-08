@@ -15,8 +15,8 @@ import com.github.scribejava.core.oauth.AccessTokenRequestParams;
 import com.github.scribejava.core.oauth.OAuth20Service;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.schema.User;
-import dev.lukebemish.larder.utils.Enums;
 import dev.lukebemish.larder.utils.ExpiringValue;
+import dev.lukebemish.polymorphicsignatures.utilities.EnumUtils;
 import io.javalin.http.BadRequestResponse;
 import io.javalin.http.Context;
 import io.javalin.http.NotFoundResponse;
@@ -401,7 +401,7 @@ final class OIDCAuthenticator {
 
     private static final String JWT_HEADER = Base64.getUrlEncoder().encodeToString("{\"typ\":\"JWT\",\"alg\":\"HS256\"}".getBytes(StandardCharsets.UTF_8));
 
-    private String userJwt(String idToken, UUID userId, Set<Role> roles) {
+    private String userJwt(String idToken, UUID userId, Set<? extends Role> roles) {
         ObjectNode node = mapper.createObjectNode();
         node.put("user", userId.toString());
 
@@ -440,7 +440,7 @@ final class OIDCAuthenticator {
 
     private static final String SESSION_TOKEN_COOKIE = "session_token";
 
-    public Set<Role> userRoles(Context context) {
+    public Set<? extends Role> userRoles(Context context) {
         if (context.attribute(Larder.AUTH_INFO_KEY) instanceof Larder.AuthInfo authInfo) {
             return authInfo.roles();
         }
@@ -516,9 +516,7 @@ final class OIDCAuthenticator {
             return null;
         }
         var userUUID = UUID.fromString(bodyJson.get("user").asString());
-        var roles = bodyJson.get("roles").valueStream().map(JsonNode::asString).<Role>map(roleText -> {
-            return (Role.Builtin) Enums.tryValueOf(roleText.toUpperCase(Locale.ROOT));
-        }).filter(Objects::nonNull).collect(Collectors.toSet());
+        var roles = bodyJson.get("roles").valueStream().map(JsonNode::asString).<Role.Builtin>map(roleText -> EnumUtils.tryValueOf(roleText.toUpperCase(Locale.ROOT))).filter(Objects::nonNull).collect(Collectors.toSet());
         var expiration = Instant.ofEpochSecond(bodyJson.get("exp").asLong());
         var now = Instant.now();
         if (expiration.isAfter(now.plus(5, ChronoUnit.MINUTES))) {
