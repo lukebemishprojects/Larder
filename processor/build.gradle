@@ -8,10 +8,10 @@ group = 'dev.lukebemish.larder'
 version = '0.1.0'
 
 dependencies {
-    compileOnly("org.jspecify:jspecify:1.0.0")
-    compileOnly("com.google.auto.service:auto-service-annotations:1.1.1")
+    compileOnly(libs.jspecify)
+    compileOnly(libs.autoservice.annotations)
 
-    annotationProcessor("com.google.auto.service:auto-service:1.1.1")
+    annotationProcessor(libs.autoservice.processor)
 
-    implementation("dev.lukebemish:javac-post-processor:0.1.10")
+    implementation(libs.javacpostprocessor)
 }

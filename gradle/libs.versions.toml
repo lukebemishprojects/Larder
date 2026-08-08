@@ -1,0 +1,46 @@
+[versions]
+
+jspecify = "1.0.1"
+autoservice = "1.1.1"
+javacpostprocessor = "0.1.10"
+polymorphicsignatures = "0.1.1"
+
+javalin = "7.2.2"
+postgresql = "42.7.13"
+slf4j = "2.0.18"
+jackson = "3.2.1"
+javauuidgenerator = "5.2.0"
+jsonata4java = "3.0.0"
+
+scribejava = "8.3.3"
+jjwt = "0.13.0"
+
+pebble = "4.1.2"
+
+[libraries]
+
+jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
+autoservice-processor = { module = "com.google.auto.service:auto-service", version.ref = "autoservice" }
+autoservice-annotations = { module = "com.google.auto.service:auto-service-annotations", version.ref = "autoservice" }
+javacpostprocessor = { module = "dev.lukebemish:javac-post-processor", version.ref = "javacpostprocessor" }
+polymorphicsignatures = { module = "dev.lukebemish:polymorphic-signatures", version.ref = "polymorphicsignatures" }
+
+javalin-core = { module = "io.javalin:javalin", version.ref = "javalin" }
+javalin-openapi-processor = { module = "io.javalin.community.openapi:openapi-annotation-processor", version.ref = "javalin" }
+javalin-openapi-plugin = { module = "io.javalin.community.openapi:javalin-openapi-plugin", version.ref = "javalin" }
+javalin-swagger-plugin = { module = "io.javalin.community.openapi:javalin-swagger-plugin", version.ref = "javalin" }
+
+slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson" }
+javauuidgenerator = { module = "com.fasterxml.uuid:java-uuid-generator", version.ref = "javauuidgenerator" }
+jsonata4java = { module = "com.ibm.jsonata4java:JSONata4Java", version.ref = "jsonata4java" }
+
+scribejava-apis = { module = "com.github.scribejava:scribejava-apis", version.ref = "scribejava" }
+jjwt-api = { module = "io.jsonwebtoken:jjwt-api", version.ref = "jjwt" }
+jjwt-impl = { module = "io.jsonwebtoken:jjwt-impl", version.ref = "jjwt" }
+jjwt-jackson = { module = "io.jsonwebtoken:jjwt-jackson", version.ref = "jjwt" }
+
+pebble = { module = "io.pebbletemplates:pebble", version.ref = "pebble" }

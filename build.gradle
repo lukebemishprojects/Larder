@@ -55,29 +55,31 @@ tasks.named("jar", Jar) {
 }
 
 dependencies {
-    compileOnly("org.jspecify:jspecify:1.0.1")
+    compileOnly(libs.jspecify)
 
-    implementation("io.javalin:javalin:7.2.2")
-    annotationProcessor("io.javalin.community.openapi:openapi-annotation-processor:7.2.2")
-    implementation("io.javalin.community.openapi:javalin-openapi-plugin:7.2.2")
-    implementation("io.javalin.community.openapi:javalin-swagger-plugin:7.2.2")
-    implementation("org.postgresql:postgresql:42.7.13")
-    implementation("org.slf4j:slf4j-simple:2.0.18")
-    implementation("tools.jackson.core:jackson-databind:3.2.1")
-    implementation("com.fasterxml.uuid:java-uuid-generator:5.2.0")
-    implementation("com.ibm.jsonata4java:JSONata4Java:3.0.0")
+    implementation(libs.javalin.core)
+    annotationProcessor(libs.javalin.openapi.processor)
+    implementation(libs.javalin.openapi.plugin)
+    implementation(libs.javalin.swagger.plugin)
+    implementation(libs.postgresql)
+    implementation(libs.jackson.databind)
+    implementation(libs.javauuidgenerator)
+    implementation(libs.jsonata4java)
 
-    implementation("com.github.scribejava:scribejava-apis:8.3.3")
-    implementation("io.jsonwebtoken:jjwt-api:0.13.0")
-    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.13.0")
-    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.13.0")
+    implementation(libs.scribejava.apis)
+    implementation(libs.jjwt.api)
+    runtimeOnly(libs.jjwt.impl)
+    runtimeOnly(libs.jjwt.jackson)
 
-    implementation("io.pebbletemplates:pebble:4.1.2")
+    implementation(libs.pebble)
+
+    implementation(libs.slf4j.api)
+    runtimeOnly(libs.slf4j.simple)
 
     annotationProcessor(project(":processor"))
-    annotationProcessor("dev.lukebemish:polymorphic-signatures:0.1.1")
-    compileOnly("dev.lukebemish:polymorphic-signatures:0.1.1")
-    implementation("dev.lukebemish:polymorphic-signatures:0.1.1") {
+    annotationProcessor(libs.polymorphicsignatures)
+    compileOnly(libs.polymorphicsignatures)
+    implementation(libs.polymorphicsignatures) {
         capabilities {
             requireFeature("utilities")
         }
