@@ -2,12 +2,12 @@ import 'solid-devtools';
 
 import './app.css';
 import * as api from './api';
-import { createContext, createEffect, createResource, createSignal, ErrorBoundary, For, Setter, Show, Accessor, useContext } from 'solid-js';
+import { createContext, createEffect, createResource, createMemo, createSignal, ErrorBoundary, For, Setter, Show, Accessor, useContext } from 'solid-js';
 import { BoxInside, BoxWithHeader, Button, InnerElement, InnerHoverElements, OuterBox, TextInput, TextInputGroup } from './boxes';
 import { Dropdown } from './Dropdown';
 import { z } from 'zod';
 import { orErrorSignal, OrError } from './utils';
-import { createStore, SetStoreFunction, unwrap } from 'solid-js/store';
+import { createStore, createMutable, SetStoreFunction, unwrap } from 'solid-js/store';
 
 function NamespaceCreation(props: { user: string, mutate: Setter<api.Namespaces | undefined>, refetch: () => Promise<unknown> | unknown }) {
     const [status, setStatus] = orErrorSignal();
@@ -154,8 +154,11 @@ interface BackendsAvailable {
 }
 const BackendsAvailable = createContext<BackendsAvailable>();
 
-function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, value: api.Repository, s3set: SetStoreFunction<api.S3BackendConfiguration>, s3value: api.S3BackendConfiguration, filesystemset: SetStoreFunction<api.FilesystemBackendConfiguration>, filesystemvalue: api.FilesystemBackendConfiguration, backendType: Accessor<api.BackendConfiguration["type"] | undefined>, setBackendType: Setter<api.BackendConfiguration["type"] | undefined> }) {
+function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, value: api.Repository }) {
     const context = useContext(BackendsAvailable)!;
+
+    const backendType = createMemo<api.BackendConfiguration["type"] | undefined>(() => props.value.backend ? context.backends.find((b) => b.id == props.value.backend)?.type : undefined);
+    const deploymentBackendType = createMemo<api.BackendConfiguration["type"] | undefined>(() => props.value.deploymentbackend ? context.backends.find((b) => b.id == props.value.deploymentbackend)?.type : undefined);
 
     return (
         <div class="block flex flex-col gap-2">
@@ -164,9 +167,58 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                 <div class="text-slate-600">Maven Deploy Publishing</div>
             </div>
             <div class="flex flex-row gap-2.5 items-center">
-                <input type="checkbox" checked={props.value.supportspublishportal} onchange={(e) => props.set("supportspublishportal", e.target.checked)} />
+                <input type="checkbox" checked={props.value.supportspublishportal} onchange={(e) => {
+                    props.set("supportspublishportal", e.target.checked);
+                    props.set("deploymentbackend", undefined);
+                    props.set("deployments3backend", undefined);
+                    props.set("deploymentfilesystembackend", undefined);
+                }} />
                 <div class="text-slate-600">Portal Publishing</div>
             </div>
+            <Show when={props.value.supportspublishportal}>
+                <div class="block flex flex-col gap-2 px-2.5">
+                    <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={context.backends.map((backend) => {
+                        return {
+                            value: <div class="flex flex-row gap-2.5 w-full items-center">
+                                <div>{api.backendTypePrettyName(backend.type)}</div>
+                                <div class="flex-1"></div>
+                                <div class="font-mono text-xs text-slate-600">{backend.id}</div>
+                            </div>,
+                            action: async () => {
+                                if (props.value.deploymentbackend != backend.id) {
+                                    props.set("deployments3backend", undefined);
+                                    props.set("deploymentfilesystembackend", undefined);
+                                    if (backend.type == "s3backend") {
+                                        props.set("deployments3backend", api.newS3BackendConfiguration())
+                                    } else if (backend.type == "filesystembackend") {
+                                        props.set("deploymentfilesystembackend", api.newFilesystemBackendConfiguration())
+                                    }
+                                }
+                                props.set("deploymentbackend", backend.id);
+                            }
+                        }
+                    })}>
+                        {props.value.deploymentbackend ? (() => {
+                            const matching = context.backends.find((b) => b.id == props.value.deploymentbackend)!
+                            return <div class="flex flex-row gap-2.5 w-full items-center">
+                                <div>{api.backendTypePrettyName(matching.type)}</div>
+                                <div class="flex-1"></div>
+                                <div class="font-mono text-xs text-slate-600">{matching.id}</div>
+                            </div>
+                        })() : "Select deployment staging backend"}
+                        <svg class="-mr-1 size-5 text-slate-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" data-slot="icon">
+                            <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+                        </svg>
+                    </Dropdown>
+                    <Show when={deploymentBackendType() == "s3backend"}>
+                        <TextInput type="text" placeholder="S3 bucket" value={props.value.deployments3backend!.bucket} onchange={(v) => {props.set("deployments3backend", "bucket", v)}} />
+                        <TextInput type="text" placeholder="Prefix in bucket" value={props.value.deployments3backend!.prefix} onchange={(v) => {props.set("deployments3backend", "prefix", v)}} />
+                    </Show>
+                    <Show when={deploymentBackendType() == "filesystembackend"}>
+                        <TextInput type="text" placeholder="Prefix in filesystem" value={props.value.deploymentfilesystembackend!.prefix} onchange={(v) => {props.set("deploymentfilesystembackend", "prefix", v)}} />
+                    </Show>
+                </div>
+            </Show>
             <div class="flex flex-row gap-2.5 items-center">
                 <input type="checkbox" checked={props.value.mutable} onchange={(e) => props.set("mutable", e.target.checked)} />
                 <div class="text-slate-600">Mutable Repository</div>
@@ -186,17 +238,19 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                 <div class="text-slate-600">Artifacts Expire</div>
             </div>
             <Show when={props.value.expirationdays > 0}>
-                <TextInputGroup type="number" placeholder="Expiration days" accessor={() => props.value.expirationdays?.toString() || ""} setter={(val) => {
-                    if (val === "") {
-                        return;
-                    }
-                    const num = parseInt(val);
-                    if (!isNaN(num)) {
-                        props.set("expirationdays", num);
-                    }
-                }} units="days" input={{
-                    min: "1"
-                }} />
+                <div class="block flex flex-col gap-2 px-2.5">
+                    <TextInputGroup type="number" placeholder="Expiration days" accessor={() => props.value.expirationdays?.toString() || ""} setter={(val) => {
+                        if (val === "") {
+                            return;
+                        }
+                        const num = parseInt(val);
+                        if (!isNaN(num)) {
+                            props.set("expirationdays", num);
+                        }
+                    }} units="days" input={{
+                        min: "1"
+                    }} />
+                </div>
             </Show>
             <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={context.backends.map((backend) => {
                 return {
@@ -206,7 +260,15 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                         <div class="font-mono text-xs text-slate-600">{backend.id}</div>
                     </div>,
                     action: async () => {
-                        props.setBackendType(backend.type);
+                        if (props.value["backend"] != backend.id) {
+                            props.set("s3backend", undefined);
+                            props.set("filesystembackend", undefined);
+                            if (backend.type == "s3backend") {
+                                props.set("s3backend", api.newS3BackendConfiguration())
+                            } else if (backend.type == "filesystembackend") {
+                                props.set("filesystembackend", api.newFilesystemBackendConfiguration())
+                            }
+                        }
                         props.set("backend", backend.id);
                     }
                 }
@@ -223,12 +285,12 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                     <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
                 </svg>
             </Dropdown>
-            <Show when={props.backendType() == "s3backend"}>
-                <TextInput type="text" placeholder="S3 bucket" value={props.s3value.bucket} onchange={(v) => {props.s3set("bucket", v)}} />
-                <TextInput type="text" placeholder="Prefix in bucket" value={props.s3value.prefix} onchange={(v) => {props.s3set("prefix", v)}} />
+            <Show when={backendType() == "s3backend"}>
+                <TextInput type="text" placeholder="S3 bucket" value={props.value.s3backend!.bucket} onchange={(v) => {props.set("s3backend", "bucket", v)}} />
+                <TextInput type="text" placeholder="Prefix in bucket" value={props.value.s3backend!.prefix} onchange={(v) => {props.set("s3backend", "prefix", v)}} />
             </Show>
-            <Show when={props.backendType() == "filesystembackend"}>
-                <TextInput type="text" placeholder="Prefix in filesystem" value={props.filesystemvalue.prefix} onchange={(v) => {props.filesystemset("prefix", v)}} />
+            <Show when={backendType() == "filesystembackend"}>
+                <TextInput type="text" placeholder="Prefix in filesystem" value={props.value.filesystembackend!.prefix} onchange={(v) => {props.set("filesystembackend", "prefix", v)}} />
             </Show>
         </div>
     );
@@ -236,43 +298,13 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
 
 function SingleRepository(props: { repository: api.Repository, mutate: Setter<api.Repositories | undefined>, refetch: () => Promise<unknown> | unknown }) {
     const context = useContext(BackendsAvailable)!;
-
-    const [ toSet, setToSet ] = createStore({
-        ...props.repository,
-        s3backend: undefined,
-        filesystembackend: undefined
-    } as api.Repository);
-    const [ backendType, setBackendType ] = createSignal<api.BackendConfiguration["type"] | undefined>(context.backends.find((b) => b.id == props.repository.backend)?.type);
-    const [ toSetS3, setToSetS3 ] = createStore(props.repository.s3backend ? { ...props.repository.s3backend! } : api.newS3BackendConfiguration());
-    const [ toSetFilesystem, setToSetFilesystem ] = createStore(props.repository.filesystembackend ? { ...props.repository.filesystembackend! } : api.newFilesystemBackendConfiguration());
+    const [ toSet, setToSet ] = createStore(structuredClone({
+        ...props.repository
+    }));
     const [ isDeleting, setIsDeleting ] = createSignal(false);
-    const isDirty = () => {
-        let key: keyof api.Repository;
-        for (key in props.repository) {
-            if (key == "s3backend" || key == "filesystembackend") {
-                continue;
-            }
-            if (toSet[key] != props.repository[key]) {
-                return true;
-            }
-        }
-        if (backendType() == "s3backend") {
-            let s3key: keyof api.S3BackendConfiguration;
-            for (s3key in props.repository.s3backend!) {
-                if (toSetS3[s3key] != props.repository.s3backend![s3key]) {
-                    return true;
-                }
-            }
-        } else if (backendType() == "filesystembackend") {
-            let filesystemkey: keyof api.FilesystemBackendConfiguration;
-            for (filesystemkey in props.repository.filesystembackend!) {
-                if (toSetFilesystem[filesystemkey] != props.repository.filesystembackend![filesystemkey]) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
+    const isDirty = createMemo(() => {
+        return !api.zodEquals(api.Repository, toSet, props.repository);
+    });
     const [ status, setStatus ] = orErrorSignal();
     return <BoxWithHeader>
         <div class="flex flex-row gap-5 items-center">
@@ -281,17 +313,12 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
         </div>
         <>
             <InnerElement>
-                <RepositorySettings value={toSet} set={setToSet} s3value={toSetS3} s3set={setToSetS3} filesystemvalue={toSetFilesystem} filesystemset={setToSetFilesystem} backendType={backendType} setBackendType={setBackendType} />
+                <RepositorySettings value={toSet} set={setToSet} />
             </InnerElement>
             <InnerElement>
                 <div class="flex flex-row gap-2.5 w-full items-center">
                     <Button disabled={!isDirty()} onclick={async () => {
-                        const current: api.Repository = { ...unwrap(toSet), s3backend: undefined, filesystembackend: undefined }
-                        if (backendType() === "s3backend") {
-                            current.s3backend = { ...unwrap(toSetS3) };
-                        } else if (backendType() === "filesystembackend") {
-                            current.filesystembackend = {...unwrap(toSetFilesystem)}
-                        }
+                        const current: api.Repository = { ...unwrap(toSet) }
                         if (!api.validateRepository(current, setStatus)) {
                             return;
                         }
@@ -314,16 +341,8 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
                         }
                         if (isDirty()) {
                             setToSet({
-                                ...props.repository,
-                                s3backend: undefined
+                                ...props.repository
                             });
-                            setToSetS3(props.repository.s3backend ? {
-                                ...props.repository.s3backend!
-                            } : api.newS3BackendConfiguration());
-                            setToSetFilesystem(props.repository.filesystembackend ? {
-                                ...props.repository.filesystembackend!
-                            } : api.newFilesystemBackendConfiguration());
-                            setBackendType(context.backends.find((b) => b.id == props.repository.backend)?.type);
                         }
                     }} disabled={!isDirty() && !isDeleting()}>
                         Cancel
@@ -363,9 +382,6 @@ export function RepositoriesList() {
         return await api.fetchJSON('/dashboard/admin/api/repositories', api.Repositories);
     })
     const [ toCreate, setToCreate ] = createStore(api.newRepository());
-    const [ backendType, setBackendType ] = createSignal<api.BackendConfiguration["type"] | undefined>(undefined);
-    const [ toCreateS3, setToCreateS3 ] = createStore(api.newS3BackendConfiguration());
-    const [ toCreateFilesystem, setToCreateFilesystem ] = createStore(api.newFilesystemBackendConfiguration());
     const [ status, setStatus ] = orErrorSignal();
     const [ backends ] = createResource(async () => {
         return await api.fetchJSON('/dashboard/admin/api/backends', api.Backends);
@@ -383,12 +399,7 @@ export function RepositoriesList() {
                 <div class="shadow-sm"><TextInputGroup type="text" accessor={() => toCreate.name} setter={(value: string) => {
                     setToCreate("name", value);
                 }} placeholder="Create repository" submit="Create" onsubmit={async () => {
-                    const current: api.Repository = { ...unwrap(toCreate), s3backend: undefined, filesystembackend: undefined }
-                    if (backendType() == "s3backend") {
-                        current.s3backend = { ...unwrap(toCreateS3) };
-                    } else if (backendType() == "filesystembackend") {
-                        current.filesystembackend = {...unwrap(toCreateFilesystem)};
-                    }
+                    const current: api.Repository = { ...unwrap(toCreate) }
 
                     if (!api.validateRepository(current, setStatus)) {
                         return;
@@ -399,8 +410,6 @@ export function RepositoriesList() {
                         return;
                     }
                     setToCreate(api.newRepository());
-                    setToCreateS3(api.newS3BackendConfiguration());
-                    setToCreateFilesystem(api.newFilesystemBackendConfiguration());
                     setStatus({ status: "working" });
                     mutate((repositories) => {
                         return repositories === undefined ? undefined : [...repositories, current];
@@ -417,7 +426,7 @@ export function RepositoriesList() {
                 }} /></div>
                 <BoxInside>
                     <InnerElement>
-                        <RepositorySettings value={toCreate} set={setToCreate} s3value={toCreateS3} s3set={setToCreateS3} filesystemvalue={toCreateFilesystem} filesystemset={setToCreateFilesystem} backendType={backendType} setBackendType={setBackendType} />
+                        <RepositorySettings value={toCreate} set={setToCreate} />
                         <OrError get={status} />
                     </InnerElement>
                 </BoxInside>

@@ -447,6 +447,9 @@ final class Api {
         if (repository.expirationDays() < 0) {
             throw new BadRequestResponse("Expiration days must be greater than 0");
         }
+        if (repository.supportsPublishPortal() && repository.deploymentBackend() == null) {
+            throw new BadRequestResponse("Deployment backend must be provided to support publish portal");
+        }
         connection(context).transact(c -> {
             var backendId = Identifier.of(RepositoryBackend.REPRESENTATION, repository.backend());
             var newBackend = c.find(backendId);

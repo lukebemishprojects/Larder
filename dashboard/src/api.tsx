@@ -2,8 +2,17 @@ import { Setter } from 'solid-js';
 import { z } from 'zod';
 import { OrError } from './utils';
 
-export function nullishOptional<R>(schema: z.ZodType<R>): z.ZodOptional<z.ZodType<R | undefined>> {
-    return schema.nullish().transform( x => x ?? undefined ).optional();
+export function nullishOptional<R, Z extends z.ZodType<R>>(schema: Z) {
+    const input = schema.nullish().optional();
+    const output = schema.optional();
+    return z.codec(
+        input,
+        output,
+        {
+            decode: x => output.encode(x ?? undefined),
+            encode: (x) => input.decode(x)
+        }
+    )
 }
 
 export async function fetchJSON<S extends z.ZodType>(url: string, schema: S): Promise<z.infer<S>> {
@@ -66,6 +75,27 @@ export type UserCapability = z.infer<typeof UserCapability>;
 export const UserCapabilities = ListResponse(UserCapability);
 export type UserCapabilities = ListResponse<UserCapability>;
 
+export const AccessTokenBase = z.object({
+    name: z.string(),
+    namespaces: z.string().array(),
+    repositories: z.string().array(),
+    canpublish: z.boolean()
+});
+export type AccessTokenBase = z.infer<typeof AccessTokenBase>;
+
+export const AccessToken = AccessTokenBase.extend({
+    key: z.string(),
+    token: nullishOptional(z.string()),
+    expires: z.date()
+});
+export type AccessToken = z.infer<typeof AccessToken>;
+
+export const AccessTokenRequest = AccessTokenBase.extend({
+    user: z.uuid(),
+    lifetime: z.string() // TODO: refine this
+});
+export type AccessTokenRequest = z.infer<typeof AccessToken>;
+
 export const Namespace = z.object({
     namespace: z.string(),
     confirmed: z.boolean()
@@ -114,6 +144,11 @@ export const Repository = z.object({
     name: z.string(),
     supportsmavendeploy: z.boolean(),
     supportspublishportal: z.boolean(),
+
+    deploymentbackend: nullishOptional(Backend.shape.id),
+    deployments3backend: nullishOptional(S3BackendConfiguration),
+    deploymentfilesystembackend: nullishOptional(FilesystemBackendConfiguration),
+
     expirationdays: z.number().nonnegative(),
     mutable: z.boolean(),
     supportssnapshots: z.boolean(),
@@ -198,3 +233,6 @@ export function backendTypePrettyName(type: BackendConfiguration["type"]): strin
     }
 }
 
+export function zodEquals<Z extends z.ZodObject>(z: Z, a: z.infer<Z>, b: z.infer<Z>): boolean {
+    return JSON.stringify(z.encode(a)) == JSON.stringify(z.encode(b))
+}

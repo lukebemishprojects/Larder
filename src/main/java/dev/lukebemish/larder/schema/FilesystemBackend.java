@@ -14,7 +14,7 @@ import java.util.Optional;
 public record FilesystemBackend(
     Identifier<RepositoryBackend> id,
     Optional<Location<?>> location
-) implements Model.Extension<RepositoryBackend>, Backend<FilesystemBackendConfiguration> {
+) implements Model.Extension<RepositoryBackend>, Backend<FilesystemBackendConfiguration, FilesystemBackend> {
     public static final Partial<FilesystemBackend, FilesystemBackend.ById> BY_ID = new Partial<>("by_id");
     public record ById(Identifier<RepositoryBackend> id) implements Model.Extension.ByHost<RepositoryBackend, FilesystemBackend, FilesystemBackend.ById> {
         @Override

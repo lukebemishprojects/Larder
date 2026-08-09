@@ -1,13 +1,6 @@
 package dev.lukebemish.larder.schema;
 
 import dev.lukebemish.larder.orm.Migrations;
-import dev.lukebemish.larder.orm.Representation;
-
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
-import java.util.List;
 
 public class Schema {
     static void main() {
@@ -39,16 +32,20 @@ public class Schema {
                     name varchar NOT NULL,
                     supportsmavendeploy boolean NOT NULL,
                     supportspublishportal boolean NOT NULL,
+                    deploymentbackend uuid,
                     expirationdays integer NOT NULL,
                     mutable boolean NOT NULL,
                     backend uuid NOT NULL,
                     supportssnapshots boolean NOT NULL,
                     PRIMARY KEY (id),
                     UNIQUE (name),
+                    FOREIGN KEY (deploymentbackend) REFERENCES repositorybackends (id),
                     FOREIGN KEY (backend) REFERENCES repositorybackends (id)
                 );
 
                 CREATE INDEX repositories_by_backend ON repositories (backend);
+
+                CREATE INDEX repositories_by_name ON repositories (name);
 
                 CREATE TABLE IF NOT EXISTS users (
                     id uuid NOT NULL,
@@ -72,11 +69,11 @@ public class Schema {
 
                 CREATE TABLE IF NOT EXISTS deploymentpackages (
                     deployment uuid NOT NULL,
-                    identifiertype smallint NOT NULL,
-                    identifiergroup varchar NOT NULL,
-                    identifiername varchar NOT NULL,
-                    identifierversion varchar NOT NULL,
-                    PRIMARY KEY (deployment, identifiertype, identifiergroup, identifiername, identifierversion),
+                    identifier_type smallint NOT NULL,
+                    identifier_group varchar NOT NULL,
+                    identifier_name varchar NOT NULL,
+                    identifier_version varchar NOT NULL,
+                    PRIMARY KEY (deployment, identifier_type, identifier_group, identifier_name, identifier_version),
                     FOREIGN KEY (deployment) REFERENCES deployments (id)
                 );
 
@@ -121,19 +118,19 @@ public class Schema {
 
                 CREATE TABLE IF NOT EXISTS repositoryindices (
                     repository uuid NOT NULL,
-                    locationpath varchar NOT NULL,
-                    locationname varchar NOT NULL,
+                    location_path varchar NOT NULL,
+                    location_name varchar NOT NULL,
                     isdirectory boolean NOT NULL,
                     lastmodified timestamp,
                     size bigint,
                     expires bigint NOT NULL,
-                    PRIMARY KEY (repository, locationpath, locationname),
+                    PRIMARY KEY (repository, location_path, location_name),
                     FOREIGN KEY (repository) REFERENCES repositories (id)
                 );
 
                 CREATE INDEX repositoryindices_by_repository ON repositoryindices (repository);
 
-                CREATE INDEX repositoryindices_by_repository_and_path ON repositoryindices (repository, locationpath);
+                CREATE INDEX repositoryindices_by_repository_and_path ON repositoryindices (repository, location_path);
 
                 CREATE TABLE IF NOT EXISTS tokennamespaces (
                     token uuid NOT NULL,
@@ -148,19 +145,19 @@ public class Schema {
                     id uuid NOT NULL,
                     backend uuid NOT NULL,
                     prefix varchar NOT NULL,
-                    PRIMARY KEY (id),
+                    PRIMARY KEY (id, backend),
                     FOREIGN KEY (id) REFERENCES repositories (id),
                     FOREIGN KEY (backend) REFERENCES repositorybackends (id)
                 );
 
                 CREATE TABLE IF NOT EXISTS packages (
                     repository uuid NOT NULL,
-                    identifiertype smallint NOT NULL,
-                    identifiergroup varchar NOT NULL,
-                    identifiername varchar NOT NULL,
-                    identifierversion varchar NOT NULL,
+                    identifier_type smallint NOT NULL,
+                    identifier_group varchar NOT NULL,
+                    identifier_name varchar NOT NULL,
+                    identifier_version varchar NOT NULL,
                     timestamp timestamp NOT NULL,
-                    PRIMARY KEY (repository, identifiertype, identifiergroup, identifiername, identifierversion),
+                    PRIMARY KEY (repository, identifier_type, identifier_group, identifier_name, identifier_version),
                     FOREIGN KEY (repository) REFERENCES repositories (id)
                 );
 
@@ -179,7 +176,7 @@ public class Schema {
                     backend uuid NOT NULL,
                     bucket varchar NOT NULL,
                     prefix varchar NOT NULL,
-                    PRIMARY KEY (id),
+                    PRIMARY KEY (id, backend),
                     FOREIGN KEY (id) REFERENCES repositories (id),
                     FOREIGN KEY (backend) REFERENCES repositorybackends (id)
                 );""")

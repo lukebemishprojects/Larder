@@ -1,6 +1,8 @@
 import com.sun.security.auth.module.UnixSystem
 import dev.lukebemish.larder.buildtooling.JLinkTask
 
+import java.nio.file.Files
+
 plugins {
     id 'java'
     id 'build-logic-conventions'
@@ -175,6 +177,12 @@ tasks.register("startDevDocker", Exec) {
     workingDir = layout.projectDirectory
     outputs.upToDateWhen { false }
     mustRunAfter tasks.stopDevDocker // Prevents anything depending on this from seeing invalid state
+    def buildDir = layout.buildDirectory.get().asFile.toPath()
+    doFirst {
+        // Prevents these being created as root
+        Files.createDirectories(buildDir.resolve("dev/minio"))
+        Files.createDirectories(buildDir.resolve("dev/larder-postgres"))
+    }
 }
 
 tasks.register("testDev", JavaExec) {

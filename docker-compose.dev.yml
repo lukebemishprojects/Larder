@@ -3,7 +3,7 @@ services:
     container_name: minio
     image: minio/minio:latest
     restart: on-failure
-    user: ${MY_UID}:${MY_GID}
+    user: "${MY_UID}:${MY_GID}"
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -12,12 +12,14 @@ services:
       - type: bind
         source: ./build/dev/minio/
         target: /data
+        bind:
+          create_host_path: false
 
   larder-postgres:
     container_name: larder-postgres
     image: postgres:17-alpine
     restart: on-failure
-    user: ${MY_UID}:${MY_GID}
+    user: "${MY_UID}:${MY_GID}"
     ports:
       - "5432:5432"
     environment:
@@ -33,17 +35,29 @@ services:
       - type: bind
         source: ./build/dev/larder-postgres/
         target: /var/lib/postgresql/data
+        bind:
+          create_host_path: false
 
   nanoidp:
     container_name: nanoidp
     image: ghcr.io/cdelmonte-zg/nanoidp:v2.5.0
     restart: on-failure
-    user: ${MY_UID}:${MY_GID}
+    # This does _not_ run as the host user, due to weirdness with /app/config/keys ownership
+    # The read-only bind mounts on the various yaml files should be enough
     ports:
       - "8282:8282"
     environment:
       PORT: "8282"
     volumes:
       - type: bind
-        source: ./test-oidc
-        target: /app/config/
+        source: ./test-oidc/settings.yaml
+        target: /app/config/settings.yaml
+        bind:
+          create_host_path: false
+        read_only: true
+      - type: bind
+        source: ./test-oidc/users.yaml
+        target: /app/config/users.yaml
+        bind:
+          create_host_path: false
+        read_only: true

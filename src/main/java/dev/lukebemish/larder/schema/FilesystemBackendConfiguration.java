@@ -1,12 +1,13 @@
 package dev.lukebemish.larder.schema;
 
+import dev.lukebemish.larder.Backend;
 import dev.lukebemish.larder.orm.DatabasePrimitiveType;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.Model;
 import dev.lukebemish.larder.orm.Partial;
 import dev.lukebemish.larder.orm.Representation;
 
-public record FilesystemBackendConfiguration(Identifier<Repository> id, Identifier<RepositoryBackend> backend, String prefix) implements Model.OneToMany<Repository, Identifier<RepositoryBackend>> {
+public record FilesystemBackendConfiguration(Identifier<Repository> id, Identifier<RepositoryBackend> backend, String prefix) implements Model.OneToMany<Repository, Identifier<RepositoryBackend>>, Backend.Config<FilesystemBackendConfiguration, FilesystemBackend> {
     public static final Partial<FilesystemBackendConfiguration, FilesystemBackendConfiguration.ById> BY_ID = new Partial<>("by_id");
     public record ById(Identifier<Repository> source, Identifier<RepositoryBackend> value) implements Model.OneToMany.ByPair<Repository, Identifier<RepositoryBackend>, FilesystemBackendConfiguration, FilesystemBackendConfiguration.ById> {
         @Override

@@ -13,6 +13,10 @@ import { OrError, orErrorSignal } from './utils';
 
 const root = document.getElementById('root');
 
+function TokensList() {
+    const context = useContext(AppContext);
+}
+
 function NamespaceList() {
     const context = useContext(AppContext);
 
@@ -80,8 +84,8 @@ render(() => {
     return <App entries={[
         new AppInternalEntry("Account information", () => "Account information", AccountInfo),
         new AppInternalEntry("Namespaces", () => "Namespaces", NamespaceList),
-        new AppInternalEntry("Deployments", () => "Deployments", () => <>
-        </>),
+        new AppInternalEntry("Tokens", () => "Tokens", TokensList),
+        new AppInternalEntry("Deployments", () => "Deployments", () => <></>),
         new AppInternalEntry("Users", () => "Users", admin.AdminUsers, isAdminDashboardVisible),
         new AppInternalEntry("Repositories", () => "Repositories", admin.RepositoriesList, isAdminDashboardVisible),
         new AppInternalEntry("Backends", () => "Backends", admin.BackendsList, isAdminDashboardVisible),
