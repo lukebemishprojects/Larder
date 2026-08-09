@@ -8,7 +8,10 @@ import dev.lukebemish.larder.orm.Model;
 import dev.lukebemish.larder.orm.Partial;
 import dev.lukebemish.larder.orm.Representation;
 import dev.lukebemish.polymorphicsignatures.utilities.EnumUtils;
+import org.jspecify.annotations.Nullable;
 
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Optional;
 
 public record FilesystemBackend(
@@ -31,4 +34,14 @@ public record FilesystemBackend(
             location.get(result).flatMap(name -> Optional.ofNullable(EnumUtils.tryValueOf(name)))
         ));
     });
+
+    @Override
+    public @Nullable InputStream readPath(FilesystemBackendConfiguration config, String relativePath) {
+        throw new RuntimeException("Not Yet Implemented");
+    }
+
+    @Override
+    public OutputStream writePath(FilesystemBackendConfiguration config, String relativePath) {
+        throw new RuntimeException("Not Yet Implemented");
+    }
 }

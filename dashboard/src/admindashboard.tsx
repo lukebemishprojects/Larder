@@ -176,7 +176,7 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                 <div class="text-slate-600">Portal Publishing</div>
             </div>
             <Show when={props.value.supportspublishportal}>
-                <div class="block flex flex-col gap-2 px-2.5">
+                <div class="block flex flex-col gap-2 pl-2.5">
                     <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={context.backends.map((backend) => {
                         return {
                             value: <div class="flex flex-row gap-2.5 w-full items-center">
@@ -238,7 +238,7 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                 <div class="text-slate-600">Artifacts Expire</div>
             </div>
             <Show when={props.value.expirationdays > 0}>
-                <div class="block flex flex-col gap-2 px-2.5">
+                <div class="block flex flex-col gap-2 pl-2.5">
                     <TextInputGroup type="number" placeholder="Expiration days" accessor={() => props.value.expirationdays?.toString() || ""} setter={(val) => {
                         if (val === "") {
                             return;

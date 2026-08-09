@@ -20,16 +20,6 @@ public record S3Backend(
 ) implements Model.Extension<RepositoryBackend>, Backend<S3BackendConfiguration, S3Backend> {
     public static final Partial<S3Backend, S3Backend.ById> BY_ID = new Partial<>("by_id");
 
-    @Override
-    public @Nullable InputStream readPath(S3BackendConfiguration config, String relativePath) {
-        throw new RuntimeException("Not Yet Implemented");
-    }
-
-    @Override
-    public OutputStream writePath(S3BackendConfiguration config, String relativePath) {
-        throw new RuntimeException("Not Yet Implemented");
-    }
-
     public record ById(Identifier<RepositoryBackend> id) implements Model.Extension.ByHost<RepositoryBackend, S3Backend, S3Backend.ById> {
         @Override
         public Partial<S3Backend, S3Backend.ById> type() {
@@ -51,4 +41,14 @@ public record S3Backend(
                 secretAccessKey.get(result)
         ));
     });
+
+    @Override
+    public @Nullable InputStream readPath(S3BackendConfiguration config, String relativePath) {
+        throw new RuntimeException("Not Yet Implemented");
+    }
+
+    @Override
+    public OutputStream writePath(S3BackendConfiguration config, String relativePath) {
+        throw new RuntimeException("Not Yet Implemented");
+    }
 }

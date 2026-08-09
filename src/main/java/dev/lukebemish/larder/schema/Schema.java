@@ -143,9 +143,10 @@ public class Schema {
 
                 CREATE TABLE IF NOT EXISTS filesystembackendconfigurations (
                     id uuid NOT NULL,
+                    type_id smallint NOT NULL,
                     backend uuid NOT NULL,
                     prefix varchar NOT NULL,
-                    PRIMARY KEY (id, backend),
+                    PRIMARY KEY (id, type_id),
                     FOREIGN KEY (id) REFERENCES repositories (id),
                     FOREIGN KEY (backend) REFERENCES repositorybackends (id)
                 );
@@ -173,10 +174,11 @@ public class Schema {
 
                 CREATE TABLE IF NOT EXISTS s3backendconfigurations (
                     id uuid NOT NULL,
+                    type_id smallint NOT NULL,
                     backend uuid NOT NULL,
                     bucket varchar NOT NULL,
                     prefix varchar NOT NULL,
-                    PRIMARY KEY (id, backend),
+                    PRIMARY KEY (id, type_id),
                     FOREIGN KEY (id) REFERENCES repositories (id),
                     FOREIGN KEY (backend) REFERENCES repositorybackends (id)
                 );""")

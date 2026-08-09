@@ -9,6 +9,7 @@ import dev.lukebemish.larder.api.UserCapability;
 import dev.lukebemish.larder.api.UserNamespaceApi;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.ModelConnection;
+import dev.lukebemish.larder.schema.BackendConfigurationType;
 import dev.lukebemish.larder.schema.Deployment;
 import dev.lukebemish.larder.schema.FilesystemBackendConfiguration;
 import dev.lukebemish.larder.schema.Package;
@@ -283,9 +284,18 @@ final class Api {
             var id = Identifier.of(found.getFirst());
             var backend  = connection.select(found.getFirst().backend());
             switch (backend.type()) {
-                case RepositoryBackendType.S3 -> connection.delete(new S3BackendConfiguration.ById(id, Identifier.of(backend)));
-                case RepositoryBackendType.FILESYSTEM -> connection.delete(new FilesystemBackendConfiguration.ById(id, Identifier.of(backend)));
+                case RepositoryBackendType.S3 -> connection.delete(new S3BackendConfiguration.ById(id, BackendConfigurationType.PRIMARY));
+                case RepositoryBackendType.FILESYSTEM -> connection.delete(new FilesystemBackendConfiguration.ById(id, BackendConfigurationType.PRIMARY));
             }
+
+            if (found.getFirst().deploymentBackend().isPresent()) {
+                var deploymentBackend = connection.select(found.getFirst().deploymentBackend().get());
+                switch (deploymentBackend.type()) {
+                    case RepositoryBackendType.S3 -> connection.delete(new S3BackendConfiguration.ById(id, BackendConfigurationType.DEPLOYMENTS));
+                    case RepositoryBackendType.FILESYSTEM -> connection.delete(new FilesystemBackendConfiguration.ById(id, BackendConfigurationType.DEPLOYMENTS));
+                }
+            }
+
             connection.delete(new RepositoryIndex.ByRepository(id)); // delete all indices
             connection.delete(new TokenRepository.ByRepository(id)); // delete all associations of keys with this repository
             for (var deployment : connection.select(new Deployment.ByRepository(id))) {
@@ -488,15 +498,15 @@ final class Api {
                 if (!existing.getFirst().backend().equals(backendId)) {
                     var backendActual = c.select(existing.getFirst().backend());
                     switch (backendActual.type()) {
-                        case RepositoryBackendType.S3 -> c.delete(new S3BackendConfiguration.ById(repositoryId, Identifier.of(backendActual)));
-                        case RepositoryBackendType.FILESYSTEM -> c.delete(new FilesystemBackendConfiguration.ById(repositoryId, Identifier.of(backendActual)));
+                        case RepositoryBackendType.S3 -> c.delete(new S3BackendConfiguration.ById(repositoryId, BackendConfigurationType.PRIMARY));
+                        case RepositoryBackendType.FILESYSTEM -> c.delete(new FilesystemBackendConfiguration.ById(repositoryId, BackendConfigurationType.PRIMARY));
                     }
                 }
                 if (existing.getFirst().deploymentBackend().isPresent() && !existing.getFirst().deploymentBackend().get().equals(deploymentBackendId)) {
                     var backendActual = c.select(existing.getFirst().deploymentBackend().get());
                     switch (backendActual.type()) {
-                        case RepositoryBackendType.S3 -> c.delete(new S3BackendConfiguration.ById(repositoryId, Identifier.of(backendActual)));
-                        case RepositoryBackendType.FILESYSTEM -> c.delete(new FilesystemBackendConfiguration.ById(repositoryId, Identifier.of(backendActual)));
+                        case RepositoryBackendType.S3 -> c.delete(new S3BackendConfiguration.ById(repositoryId, BackendConfigurationType.DEPLOYMENTS));
+                        case RepositoryBackendType.FILESYSTEM -> c.delete(new FilesystemBackendConfiguration.ById(repositoryId, BackendConfigurationType.DEPLOYMENTS));
                     }
                 }
             }
@@ -507,11 +517,12 @@ final class Api {
                     }
                     var config = new S3BackendConfiguration(
                         repositoryId,
+                        BackendConfigurationType.PRIMARY,
                         backendId,
                         repository.s3Backend().bucket(),
                         repository.s3Backend().prefix()
                     );
-                    var existingConfig = c.select(new S3BackendConfiguration.ById(repositoryId, backendId));
+                    var existingConfig = c.select(new S3BackendConfiguration.ById(repositoryId, BackendConfigurationType.PRIMARY));
                     if (existingConfig.isEmpty()) {
                         c.insert(config);
                     } else {
@@ -524,10 +535,11 @@ final class Api {
                     }
                     var config = new FilesystemBackendConfiguration(
                         repositoryId,
+                        BackendConfigurationType.PRIMARY,
                         backendId,
                         repository.filesystemBackend().prefix()
                     );
-                    var existingConfig = c.select(new FilesystemBackendConfiguration.ById(repositoryId, backendId));
+                    var existingConfig = c.select(new FilesystemBackendConfiguration.ById(repositoryId, BackendConfigurationType.PRIMARY));
                     if (existingConfig.isEmpty()) {
                         c.insert(config);
                     } else {
@@ -544,11 +556,12 @@ final class Api {
                         }
                         var config = new S3BackendConfiguration(
                             repositoryId,
+                            BackendConfigurationType.DEPLOYMENTS,
                             deploymentBackendId,
                             repository.deploymentS3Backend().bucket(),
                             repository.deploymentS3Backend().prefix()
                         );
-                        var existingConfig = c.select(new S3BackendConfiguration.ById(repositoryId, deploymentBackendId));
+                        var existingConfig = c.select(new S3BackendConfiguration.ById(repositoryId, BackendConfigurationType.DEPLOYMENTS));
                         if (existingConfig.isEmpty()) {
                             c.insert(config);
                         } else {
@@ -561,10 +574,11 @@ final class Api {
                         }
                         var config = new FilesystemBackendConfiguration(
                             repositoryId,
+                            BackendConfigurationType.DEPLOYMENTS,
                             deploymentBackendId,
                             repository.deploymentFilesystemBackend().prefix()
                         );
-                        var existingConfig = c.select(new FilesystemBackendConfiguration.ById(repositoryId, deploymentBackendId));
+                        var existingConfig = c.select(new FilesystemBackendConfiguration.ById(repositoryId, BackendConfigurationType.DEPLOYMENTS));
                         if (existingConfig.isEmpty()) {
                             c.insert(config);
                         } else {

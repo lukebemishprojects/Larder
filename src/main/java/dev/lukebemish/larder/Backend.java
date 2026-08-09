@@ -2,6 +2,7 @@ package dev.lukebemish.larder;
 
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.ModelConnection;
+import dev.lukebemish.larder.schema.BackendConfigurationType;
 import dev.lukebemish.larder.schema.FilesystemBackend;
 import dev.lukebemish.larder.schema.FilesystemBackendConfiguration;
 import dev.lukebemish.larder.schema.Repository;
@@ -37,23 +38,28 @@ public interface Backend<C extends Backend.Config<C, B>, B extends Backend<C, B>
         };
     }
 
-    static Configured<?, ?> configuredBackend(Identifier<Repository> repository, Identifier<RepositoryBackend> backendId, ModelConnection connection) throws SQLException {
+    static Configured<?, ?> configuredBackend(Identifier<Repository> repository, BackendConfigurationType type, ModelConnection connection) throws SQLException {
+        var repositoryObj = connection.select(repository);
+        var backendId = switch (type) {
+            case PRIMARY -> repositoryObj.backend();
+            case DEPLOYMENTS -> repositoryObj.deploymentBackend().orElseThrow();
+        };
         var backend = connection.select(backendId);
         return switch (backend.type()) {
-            case S3 -> configuredS3Backend(repository, backend, connection);
-            case FILESYSTEM -> configuredFilesystemBackend(repository, backend, connection);
+            case S3 -> configuredS3Backend(repository, backend, type, connection);
+            case FILESYSTEM -> configuredFilesystemBackend(repository, backend, type, connection);
         };
     }
 
-    private static Configured<FilesystemBackendConfiguration,FilesystemBackend> configuredFilesystemBackend(Identifier<Repository> repository, RepositoryBackend backend, ModelConnection connection) throws SQLException {
+    private static Configured<FilesystemBackendConfiguration,FilesystemBackend> configuredFilesystemBackend(Identifier<Repository> repository, RepositoryBackend backend, BackendConfigurationType type, ModelConnection connection) throws SQLException {
         var filesystemBackend = connection.select(new FilesystemBackend.ById(Identifier.of(backend))).getFirst();
-        var filesystemBackendConfig = connection.select(new FilesystemBackendConfiguration.ById(repository, Identifier.of(backend))).getFirst();
+        var filesystemBackendConfig = connection.select(new FilesystemBackendConfiguration.ById(repository, type)).getFirst();
         return new Configured<>(filesystemBackend, filesystemBackendConfig);
     }
 
-    private static Configured<S3BackendConfiguration,S3Backend> configuredS3Backend(Identifier<Repository> repository, RepositoryBackend backend, ModelConnection connection) throws SQLException {
+    private static Configured<S3BackendConfiguration,S3Backend> configuredS3Backend(Identifier<Repository> repository, RepositoryBackend backend, BackendConfigurationType type, ModelConnection connection) throws SQLException {
         var s3backend = connection.select(new S3Backend.ById(Identifier.of(backend))).getFirst();
-        var s3backendConfig = connection.select(new S3BackendConfiguration.ById(repository, Identifier.of(backend))).getFirst();
+        var s3backendConfig = connection.select(new S3BackendConfiguration.ById(repository, type)).getFirst();
         return new Configured<>(s3backend, s3backendConfig);
     }
 }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.ModelConnection;
+import dev.lukebemish.larder.schema.BackendConfigurationType;
 import dev.lukebemish.larder.schema.FilesystemBackendConfiguration;
 import dev.lukebemish.larder.schema.Repository;
 import dev.lukebemish.larder.schema.S3BackendConfiguration;
@@ -35,11 +36,11 @@ public record RepositoryApi(
         FilesystemBackendConfigurationApi filesystemBackend = null;
         switch (backend.type()) {
             case RepositoryBackendType.S3 -> {
-                var configuration = connection.select(new S3BackendConfiguration.ById(Identifier.of(repository), repository.backend()));
+                var configuration = connection.select(new S3BackendConfiguration.ById(Identifier.of(repository), BackendConfigurationType.PRIMARY));
                 s3Backend = S3BackendConfigurationApi.from(configuration.getFirst());
             }
             case RepositoryBackendType.FILESYSTEM -> {
-                var configuration = connection.select(new FilesystemBackendConfiguration.ById(Identifier.of(repository), repository.backend()));
+                var configuration = connection.select(new FilesystemBackendConfiguration.ById(Identifier.of(repository), BackendConfigurationType.PRIMARY));
                 filesystemBackend = FilesystemBackendConfigurationApi.from(configuration.getFirst());
             }
         }
@@ -52,11 +53,11 @@ public record RepositoryApi(
             var deploymentBackend = connection.select(repository.deploymentBackend().get());
             switch (deploymentBackend.type()) {
                 case RepositoryBackendType.S3 -> {
-                    var configuration = connection.select(new S3BackendConfiguration.ById(Identifier.of(repository), repository.deploymentBackend().get()));
+                    var configuration = connection.select(new S3BackendConfiguration.ById(Identifier.of(repository), BackendConfigurationType.DEPLOYMENTS));
                     deploymentS3Backend = S3BackendConfigurationApi.from(configuration.getFirst());
                 }
                 case RepositoryBackendType.FILESYSTEM -> {
-                    var configuration = connection.select(new FilesystemBackendConfiguration.ById(Identifier.of(repository), repository.deploymentBackend().get()));
+                    var configuration = connection.select(new FilesystemBackendConfiguration.ById(Identifier.of(repository), BackendConfigurationType.DEPLOYMENTS));
                     deploymentFilesystemBackend = FilesystemBackendConfigurationApi.from(configuration.getFirst());
                 }
             }
