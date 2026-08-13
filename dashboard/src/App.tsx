@@ -1,10 +1,10 @@
-import type { JSX, Resource } from 'solid-js';
-import type { DropdownEntry } from './Dropdown';
-import { createResource, createSignal, Show, ErrorBoundary, createContext, useContext } from 'solid-js';
+import type { JSX } from 'solid-js';
+import { createResource, createSignal, Show, ErrorBoundary, createContext } from 'solid-js';
 import { Dropdown } from './Dropdown';
 import * as api from './api';
 import { OuterBox } from './boxes';
 import { Dynamic } from 'solid-js/web';
+import {DROPDOWN, Icon} from "./icons";
 
 export class AppInternalEntry {
     constructor(
@@ -70,16 +70,14 @@ export function App(props: { entries: AppEntry[] }) {
                                 await entry.action();
                             }
                         },
-                        visible: (entry.visible ?? ((context) => true))({
+                        visible: (entry.visible ?? ((_) => true))({
                             identity: identity()!,
                             capabilities: capabilities()!
                         }),
                     };
                 })}>
                     {identity()!.email}
-                    <svg class="-mr-1 size-6 text-slate-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" data-slot="icon">
-                    <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                    </svg>
+                    <Icon icon={DROPDOWN} class="-mr-1 size-6 text-slate-600"/>
                 </Dropdown>
             </div>
             <div class="w-full h-0 border-b-2"></div>
@@ -90,4 +88,4 @@ export function App(props: { entries: AppEntry[] }) {
         </div>
         </div>
     );
-};
+}

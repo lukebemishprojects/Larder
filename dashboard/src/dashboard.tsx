@@ -7,14 +7,100 @@ import { App, AppContext, AppExternalEntry, AppInternalEntry } from './App';
 import './app.css';
 import * as api from './api';
 import * as admin from './admindashboard';
-import { createResource, createSignal, For, Show, useContext } from 'solid-js';
-import { BoxWithHeader, TextInputGroup } from './boxes';
+import {createMemo, createResource, createSignal, ErrorBoundary, For, Show, useContext} from 'solid-js';
+import {BoxWithHeader, InnerElement, OuterBox, TextCopy, TextInputGroup} from './boxes';
 import { OrError, orErrorSignal } from './utils';
+import { z } from 'zod';
+import {createStore} from "solid-js/store";
 
 const root = document.getElementById('root');
 
 function TokensList() {
     const context = useContext(AppContext);
+
+    const [namespaces] = createResource(async () => {
+        return await api.fetchJSON(`/dashboard/api/namespaces/${context!.identity.id}/list`, api.Namespaces);
+    });
+    const [repositories] = createResource(async () => {
+        return await api.fetchJSON(`/dashboard/api/repositories`, z.string().array());
+    });
+
+    const [tokens, { refetch }] = createResource(async () => {
+        return await api.fetchJSON(`/dashboard/api/tokens`, api.AccessToken.array());
+    });
+
+    // These will always be displayed first
+    const [createdTokens, setCreatedTokens] = createStore([] as api.AccessToken[]);
+
+    const tokensToDisplay = createMemo(() => {
+        const names = createdTokens.map((i) => i.name);
+        const tokensOut: api.AccessToken[] = [];
+        for (const token of createdTokens) {
+            tokensOut.push(token);
+        }
+        if (tokens()) {
+            for (const token of (tokens()!)) {
+                if (!(token.name in names)) {
+                    tokensOut.push(token);
+                }
+            }
+        }
+        return tokensOut;
+    });
+
+    return <>
+        <ErrorBoundary fallback={(error) => {
+            console.error(error);
+            return (<OuterBox>
+                <div class="text-red-600 p-5">
+                    Error: {error.message}
+                </div>
+            </OuterBox>)
+        }}>
+            <CreatedToken token={{
+                name: "Test A",
+                key: "key",
+                token: "token",
+                canpublish: true,
+                repositories: ["releases"],
+                namespaces: ["org.example"],
+                expires: new Date(Date.now())
+            }}/>
+            <CreatedToken token={{
+                name: "Test B",
+                key: "key",
+                canpublish: false,
+                repositories: ["snapshots"],
+                namespaces: ["org.example.inner"],
+                expires: new Date(Date.now())
+            }}/>
+        </ErrorBoundary>
+    </>
+}
+
+function CreatedToken(props: { token: api.AccessToken }) {
+    return <>
+        <BoxWithHeader>
+            <div class="flex flex-row items-center gap-5">
+                <div>{props.token.name}</div>
+                <div class="flex-1"></div>
+                <div>Expires {props.token.expires.toLocaleString()}</div>
+            </div>
+            <InnerElement>
+                <div class="flex flex-col gap-2">
+                    <div class="grid grid-cols-[fit-content(100%)_auto] gap-2">
+                        <div class="my-auto">Key</div>
+                        <TextCopy text={props.token.key}/>
+
+                        <Show when={props.token.token}>
+                            <div class="my-auto">Token</div>
+                            <TextCopy text={props.token.token!}/>
+                        </Show>
+                    </div>
+                </div>
+            </InnerElement>
+        </BoxWithHeader>
+    </>
 }
 
 function NamespaceList() {

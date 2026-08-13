@@ -2,12 +2,13 @@ import 'solid-devtools';
 
 import './app.css';
 import * as api from './api';
-import { createContext, createEffect, createResource, createMemo, createSignal, ErrorBoundary, For, Setter, Show, Accessor, useContext } from 'solid-js';
+import { createContext, createEffect, createResource, createMemo, createSignal, ErrorBoundary, For, Setter, Show, useContext } from 'solid-js';
 import { BoxInside, BoxWithHeader, Button, InnerElement, InnerHoverElements, OuterBox, TextInput, TextInputGroup } from './boxes';
 import { Dropdown } from './Dropdown';
 import { z } from 'zod';
 import { orErrorSignal, OrError } from './utils';
-import { createStore, createMutable, SetStoreFunction, unwrap } from 'solid-js/store';
+import { createStore, SetStoreFunction, unwrap } from 'solid-js/store';
+import {DOTDOTDOT, DROPDOWN, Icon} from "./icons";
 
 function NamespaceCreation(props: { user: string, mutate: Setter<api.Namespaces | undefined>, refetch: () => Promise<unknown> | unknown }) {
     const [status, setStatus] = orErrorSignal();
@@ -105,9 +106,7 @@ function NamespaceList(props: { user: string }) {
                                 }
                             }
                         ])}>
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-5">
-                                <path d="M3 10a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM8.5 10a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM15.5 8.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" />
-                            </svg>
+                            <Icon icon={DOTDOTDOT} class="size-5"/>
                         </Dropdown>
                     </div></ErrorBoundary>
                 }}/>
@@ -161,7 +160,7 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
     const deploymentBackendType = createMemo<api.BackendConfiguration["type"] | undefined>(() => props.value.deploymentbackend ? context.backends.find((b) => b.id == props.value.deploymentbackend)?.type : undefined);
 
     return (
-        <div class="block flex flex-col gap-2">
+        <div class="flex flex-col gap-2">
             <div class="flex flex-row gap-2.5 items-center">
                 <input type="checkbox" checked={props.value.supportsmavendeploy} onchange={(e) => props.set("supportsmavendeploy", e.target.checked)} />
                 <div class="text-slate-600">Maven Deploy Publishing</div>
@@ -176,7 +175,7 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                 <div class="text-slate-600">Portal Publishing</div>
             </div>
             <Show when={props.value.supportspublishportal}>
-                <div class="block flex flex-col gap-2 pl-2.5">
+                <div class="flex flex-col gap-2 pl-2.5">
                     <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={context.backends.map((backend) => {
                         return {
                             value: <div class="flex flex-row gap-2.5 w-full items-center">
@@ -206,9 +205,7 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                                 <div class="font-mono text-xs text-slate-600">{matching.id}</div>
                             </div>
                         })() : "Select deployment staging backend"}
-                        <svg class="-mr-1 size-5 text-slate-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" data-slot="icon">
-                            <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                        </svg>
+                        <Icon class="-mr-1 size-5 text-slate-600" icon={DROPDOWN}/>
                     </Dropdown>
                     <Show when={deploymentBackendType() == "s3backend"}>
                         <TextInput type="text" placeholder="S3 bucket" value={props.value.deployments3backend!.bucket} onchange={(v) => {props.set("deployments3backend", "bucket", v)}} />
@@ -238,7 +235,7 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                 <div class="text-slate-600">Artifacts Expire</div>
             </div>
             <Show when={props.value.expirationdays > 0}>
-                <div class="block flex flex-col gap-2 pl-2.5">
+                <div class="flex flex-col gap-2 pl-2.5">
                     <TextInputGroup type="number" placeholder="Expiration days" accessor={() => props.value.expirationdays?.toString() || ""} setter={(val) => {
                         if (val === "") {
                             return;
@@ -281,9 +278,7 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                         <div class="font-mono text-xs text-slate-600">{matching.id}</div>
                     </div>
                 })() : "Select backend"}
-                <svg class="-mr-1 size-5 text-slate-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" data-slot="icon">
-                    <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                </svg>
+                <Icon class="-mr-1 size-5 text-slate-600" icon={DROPDOWN}/>
             </Dropdown>
             <Show when={backendType() == "s3backend"}>
                 <TextInput type="text" placeholder="S3 bucket" value={props.value.s3backend!.bucket} onchange={(v) => {props.set("s3backend", "bucket", v)}} />
@@ -464,9 +459,9 @@ function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: Set
     });
 
     return (
-        <div class="block flex flex-col gap-2">
+        <div class="flex flex-col gap-2">
             <Show when={props.toSet.type == "s3backend"}>
-                <div class="block flex flex-col gap-2">
+                <div class="flex flex-col gap-2">
                     <TextInput type="text" placeholder="Region" value={props.toSetS3.region} onchange={(v) => {props.setToSetS3("region", v)}} />
                     <TextInput type="text" placeholder="Endpoint" value={props.toSetS3.endpoint} onchange={(v) => {props.setToSetS3("endpoint", v)}} />
                     <TextInput type="text" placeholder="Access Key ID" value={props.toSetS3.accesskeyid} onchange={(v) => {props.setToSetS3("accesskeyid", v)}} />
@@ -480,7 +475,7 @@ function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: Set
                 </div>
             </Show>
             <Show when={props.toSet.type == "filesystembackend" && filesystemLocations()}>
-                <div class="block flex flex-col gap-2">
+                <div class="flex flex-col gap-2">
                     <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={filesystemLocations()!.map((location) => {
                         return {
                             value: <div class="flex flex-row gap-2.5 w-full items-center">
@@ -496,9 +491,7 @@ function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: Set
                             <div>{props.toSetFilesystem.location}</div>
                             <div class="flex-1"></div>
                         </div> : "Select location"}
-                        <svg class="-mr-1 size-5 text-slate-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" data-slot="icon">
-                            <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                        </svg>
+                        <Icon class="-mr-1 size-5 text-slate-600" icon={DROPDOWN}/>
                     </Dropdown>
                 </div>
             </Show>
@@ -668,11 +661,9 @@ export function BackendsList() {
                     }
                 })}>
                     {api.backendTypePrettyName(toCreate.type)}
-                    <svg class="-mr-1 size-5 text-slate-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" data-slot="icon">
-                        <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                    </svg>
+                    <Icon class="-mr-1 size-5 text-slate-600" icon={DROPDOWN}/>
                 </Dropdown>
-                <button class="border-l-0 font-semibold bg-white rounded-md text-sm border-1 py-2.5 px-3 block cursor-pointer bg-slate-150 hover:bg-slate-200 rounded-l-none" onclick={async () => {
+                <button class="border-l-0 font-semibold bg-white rounded-md text-sm border-1 py-2.5 px-3 block cursor-pointer hover:bg-slate-200 rounded-l-none" onclick={async () => {
                     const current = { ...unwrap(toCreate) }
                     if (current.type == "s3backend") {
                         current.s3backend = { ...unwrap(toCreateS3) };

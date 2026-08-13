@@ -22,6 +22,7 @@ import io.javalin.openapi.BearerAuth;
 import io.javalin.openapi.CookieAuth;
 import io.javalin.openapi.plugin.OpenApiPlugin;
 import io.javalin.openapi.plugin.swagger.SwaggerPlugin;
+import io.javalin.security.RouteRole;
 import io.pebbletemplates.pebble.PebbleEngine;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -36,6 +37,7 @@ import java.nio.file.StandardCopyOption;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -44,7 +46,10 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 
-import static io.javalin.apibuilder.ApiBuilder.*;
+import static io.javalin.apibuilder.ApiBuilder.delete;
+import static io.javalin.apibuilder.ApiBuilder.get;
+import static io.javalin.apibuilder.ApiBuilder.path;
+import static io.javalin.apibuilder.ApiBuilder.post;
 
 public class Larder {
     private static final Logger LOGGER = LoggerFactory.getLogger(Larder.class);
@@ -150,8 +155,8 @@ public class Larder {
                     path("admin", List.of(Role.Builtin.ADMIN), () -> {
                         path("api", () -> {
                             get("users", Api::listUsers);
-                            get("repositories", Api::listRepositories);
-                            get("repositories/{repositoryName}", Api::getRepository);
+                            get("repositories", ApiRepositories::listRepositories);
+                            get("repositories/{repositoryName}", ApiRepositories::getRepository);
                             get("backends", ApiBackends::listBackends);
                             get("backends/filesystem", ApiBackends::listFilesystemLocations);
                             get("backends/{id}", ApiBackends::getBackend);
@@ -163,7 +168,7 @@ public class Larder {
                             post("namespaces/{user}/confirm/{namespace}", Api::confirmNamespace);
                             post("namespaces/{user}/delete/{namespace}", Api::removeNamespace);
 
-                            post("repositories/{repositoryName}", Api::updateRepository);
+                            post("repositories/{repositoryName}", ApiRepositories::updateRepository);
                             post("backends/{id}", ApiBackends::updateBackend);
                             post("backends", ApiBackends::createBackend);
                         });
@@ -178,6 +183,8 @@ public class Larder {
                         get("tokens", ApiTokens::listTokens);
                         post("tokens", ApiTokens::issueToken);
                         delete("tokens/{id}", ApiTokens::revokeToken);
+
+                        get("repositories", ApiRepositories::listRepositoryNames);
                     });
                 });
 
@@ -281,7 +288,7 @@ public class Larder {
 
     private void authenticate(Context context) {
         var requiredRoles = context.routeRoles();
-        var userRoles = oidcAuthenticator.userRoles(context);
+        var userRoles = new HashSet<RouteRole>(oidcAuthenticator.userRoles(context));
         if (userRoles.containsAll(requiredRoles)) {
             return; // User has all required roles to access
         }
