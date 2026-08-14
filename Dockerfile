@@ -11,7 +11,7 @@ RUN --mount=type=cache,target=/root/.npm \
 FROM amazoncorretto:25.0.4-alpine3.24 AS jvmsource
 RUN rm -rf /lib/apk
 
-FROM gradle:9.6.1-jdk25-alpine AS gradlebuilder
+FROM gradle:9.7.0-jdk25-alpine AS gradlebuilder
 WORKDIR /opt/larder
 COPY --exclude=**/build --exclude=**/.idea --exclude=**/.git --exclude=**/.gradle --exclude=indices --exclude=dashboard --exclude=Dockerfile ./ ./
 COPY --from=nodejsbuilder /opt/larder/dashboard/ ./dashboard/
