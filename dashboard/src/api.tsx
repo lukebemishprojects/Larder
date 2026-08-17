@@ -2,6 +2,9 @@ import { Setter } from 'solid-js';
 import { z } from 'zod';
 import { OrError } from './utils';
 
+// Safari (perhaps all webkit browsers?) does not currently support this without a polyfill
+import { Temporal } from 'temporal-polyfill'
+
 export function nullishOptional<R, Z extends z.ZodType<R>>(schema: Z) {
     const input = schema.nullish().optional();
     const output = schema.optional();
@@ -25,6 +28,20 @@ export async function fetchJSON<S extends z.ZodType>(url: string, schema: S): Pr
     return schema.parse(response);
 }
 
+export async function postAndListenJSON<S extends z.ZodObject, R extends z.ZodObject>(url: string, body: z.infer<S>, schema: S, outschema: R): Promise<z.infer<R>> {
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(schema.encode(body))
+    });
+    if (!response.ok) {
+        throw new Error(`Status ${response.status}, ${response.statusText}`);
+    }
+    return outschema.parse(await response.json())
+}
+
 export async function postURL(url: string): Promise<void> {
     const response = await fetch(url, {
         method: 'POST',
@@ -43,13 +60,13 @@ export async function deleteURL(url: string): Promise<void> {
     }
 }
 
-export async function postJSON<S extends z.ZodObject>(url: string, body: z.infer<S>): Promise<void> {
+export async function postJSON<S extends z.ZodObject>(url: string, body: z.infer<S>, schema: S): Promise<void> {
     const response = await fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(schema.encode(body))
     });
     if (!response.ok) {
         throw new Error(`Status ${response.status}, ${response.statusText}`);
@@ -86,15 +103,66 @@ export type AccessTokenBase = z.infer<typeof AccessTokenBase>;
 export const AccessToken = AccessTokenBase.extend({
     key: z.string(),
     token: nullishOptional(z.string()),
-    expires: z.date()
+    expires: z.string()
 });
 export type AccessToken = z.infer<typeof AccessToken>;
 
 export const AccessTokenRequest = AccessTokenBase.extend({
     user: z.uuid(),
-    lifetime: z.string() // TODO: refine this
+    lifetime: z.codec(
+        z.string(),
+        z.number(),
+        {
+            encode: value => Temporal.Duration.from({ days: value}).toString(),
+            decode: value => Temporal.Duration.from(value).days
+        }
+    )
 });
-export type AccessTokenRequest = z.infer<typeof AccessToken>;
+export type AccessTokenRequest = z.infer<typeof AccessTokenRequest>;
+export function newTokenRequest(id: string) {
+    return {
+        name: "",
+        namespaces: [] as string[],
+        repositories: [] as string[],
+        canpublish: false,
+        lifetime: 60,
+        user: id
+    } as AccessTokenRequest;
+}
+export function validateAccessTokenRequest(req: AccessTokenRequest, setStatus: Setter<OrError>, namespaces: string[], repositories: string[]): boolean {
+    if (!req.name.trim()) {
+        setStatus({ status: "error", err: "Access tokens should have a non-empty name." });
+        return false;
+    }
+    if (req.namespaces.length == 0) {
+        setStatus({ status: "error", err: "Access tokens should have valid namespaces." });
+        return false;
+    }
+    if (req.repositories.length == 0) {
+        setStatus({ status: "error", err: "Access tokens should have valid repositories." });
+        return false;
+    }
+    if (req.lifetime <= 0 || req.lifetime > 90) {
+        setStatus({ status: "error", err: "Access tokens should have a positive lifetime less than 90 days." });
+        return false;
+    }
+    outer: for (const namespace of req.namespaces) {
+        for (const targetNamespace of namespaces) {
+            if (namespace === targetNamespace || namespace.startsWith(targetNamespace + ".")) {
+                continue outer;
+            }
+        }
+        setStatus({ status: "error", err: `Namespace ${namespace} not among user's namespaces.` });
+        return false;
+    }
+    for (const repository of req.repositories) {
+        if (!repositories.includes(repository)) {
+            setStatus({ status: "error", err: `Repository ${repository} not among available repositories.` });
+            return false;
+        }
+    }
+    return true;
+}
 
 export const Namespace = z.object({
     namespace: z.string(),

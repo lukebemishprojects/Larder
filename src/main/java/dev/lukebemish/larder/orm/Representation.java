@@ -261,7 +261,7 @@ public final class Representation<T extends Model> {
             for (var field : worldImpl.getFields()) {
                 if (World.class.isAssignableFrom(field.getType()) && field.accessFlags().contains(AccessFlag.STATIC) && field.accessFlags().contains(AccessFlag.FINAL)) {
                     try {
-                        return (World) MethodHandles.lookup().unreflectGetter(field).invoke();
+                        return (World) MethodHandles.privateLookupIn(worldImpl, MethodHandles.lookup()).unreflectGetter(field).invoke();
                     } catch (Throwable e) {
                         throw e instanceof RuntimeException runtimeException ? runtimeException : new RuntimeException(e);
                     }
@@ -621,7 +621,7 @@ public final class Representation<T extends Model> {
             String.format(
                 "DELETE FROM %s WHERE %s = ?;",
                 representation.tableName,
-                representation.idFields.getFirst()
+                representation.idFields.getFirst().name
             ),
             statement -> writeIdentifier(1, statement, identifier)
         );

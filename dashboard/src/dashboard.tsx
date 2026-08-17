@@ -8,10 +8,14 @@ import './app.css';
 import * as api from './api';
 import * as admin from './admindashboard';
 import {createMemo, createResource, createSignal, ErrorBoundary, For, Show, useContext} from 'solid-js';
-import {BoxWithHeader, InnerElement, OuterBox, TextCopy, TextInputGroup} from './boxes';
+import {BoxInside, BoxWithHeader, InnerElement, OuterBox, TextCopy, TextInputGroup, TextList} from './boxes';
 import { OrError, orErrorSignal } from './utils';
 import { z } from 'zod';
-import {createStore} from "solid-js/store";
+import {createStore, unwrap} from "solid-js/store";
+
+// Safari (perhaps all webkit browsers?) does not currently support this without a polyfill
+import { Temporal } from 'temporal-polyfill'
+import {DELETE, Icon} from "./icons";
 
 const root = document.getElementById('root');
 
@@ -33,20 +37,23 @@ function TokensList() {
     const [createdTokens, setCreatedTokens] = createStore([] as api.AccessToken[]);
 
     const tokensToDisplay = createMemo(() => {
-        const names = createdTokens.map((i) => i.name);
+        const keys = createdTokens.map((i) => i.key);
         const tokensOut: api.AccessToken[] = [];
         for (const token of createdTokens) {
             tokensOut.push(token);
         }
         if (tokens()) {
             for (const token of (tokens()!)) {
-                if (!(token.name in names)) {
+                if (!(token.key in keys)) {
                     tokensOut.push(token);
                 }
             }
         }
         return tokensOut;
     });
+
+    const [ toCreate, setToCreate ] = createStore(api.newTokenRequest(context!.identity.id));
+    const [ status, setStatus ] = orErrorSignal();
 
     return <>
         <ErrorBoundary fallback={(error) => {
@@ -57,36 +64,99 @@ function TokensList() {
                 </div>
             </OuterBox>)
         }}>
-            <CreatedToken token={{
-                name: "Test A",
-                key: "key",
-                token: "token",
-                canpublish: true,
-                repositories: ["releases"],
-                namespaces: ["org.example"],
-                expires: new Date(Date.now())
-            }}/>
-            <CreatedToken token={{
-                name: "Test B",
-                key: "key",
-                canpublish: false,
-                repositories: ["snapshots"],
-                namespaces: ["org.example.inner"],
-                expires: new Date(Date.now())
-            }}/>
+            <Show when={namespaces() && repositories()}><OuterBox>
+                <div class="shadow-sm"><TextInputGroup type="text" accessor={() => toCreate.name} setter={(value: string) => {
+                    setToCreate("name", value);
+                }} placeholder="Create access token" submit="Create" onsubmit={async () => {
+                    const current: api.AccessTokenRequest = { ...unwrap(toCreate) }
+
+                    if (!api.validateAccessTokenRequest(current, setStatus, namespaces()!.map((it) => it.namespace), repositories()!)) {
+                        return;
+                    }
+
+                    setToCreate(api.newTokenRequest(context!.identity.id));
+                    setStatus({ status: "working" });
+
+                    try {
+                        const createdToken = await api.postAndListenJSON("/dashboard/api/tokens", current, api.AccessTokenRequest, api.AccessToken);
+                        setCreatedTokens(createdTokens.concat([createdToken]));
+                    } catch (err: any) {
+                        console.error(err);
+                        setStatus({ status: "error", err: `Error: ${err}` });
+                    }
+                    setStatus({ status: "ok" });
+                }} /></div>
+                <BoxInside>
+                    <InnerElement>
+                        <div class="flex flex-col gap-2">
+                            <div class="grid grid-cols-[fit-content(100%)_auto] gap-2">
+                                <div class={"my-auto"}>Repositories</div>
+                                <TextList entries={() => toCreate.repositories} setentries={(entries) => setToCreate("repositories", entries)}/>
+
+                                <div class={"my-auto"}>Namespaces</div>
+                                <TextList entries={() => toCreate.namespaces} setentries={(entries) => setToCreate("namespaces", entries)}/>
+
+                                <div class={"my-auto"}>Lifetime</div>
+                                <TextInputGroup type="number" placeholder="Expiration days" accessor={() => toCreate.lifetime?.toString() || ""} setter={(val) => {
+                                    if (val === "") {
+                                        setToCreate("lifetime", 0);
+                                        return;
+                                    }
+                                    const num = parseInt(val);
+                                    if (!isNaN(num)) {
+                                        setToCreate("lifetime", num);
+                                    }
+                                }} units="days" input={{
+                                    min: "1"
+                                }} />
+                            </div>
+                            <div class="font-bold">Permissions</div>
+                            <div class="grid gap-2 grid-flow-row">
+                                <div class="flex flex-row gap-2.5 items-center">
+                                    <input type="checkbox" checked={toCreate.canpublish} onchange={(e) => setToCreate("canpublish", e.target.checked)} />
+                                    <div class="text-slate-600">Publishing</div>
+                                </div>
+                            </div>
+                            <OrError get={status} />
+                        </div>
+                    </InnerElement>
+                </BoxInside>
+            </OuterBox></Show>
+            <For each={tokensToDisplay()}>{(item) =>
+                <CreatedToken token={item} delete={async () => {
+                    setCreatedTokens([ ...createdTokens ].filter((it) => it.key !== item.key));
+                    await api.deleteURL(`/dashboard/api/tokens/${item.key}`);
+                    refetch();
+                }}/>
+            }</For>
         </ErrorBoundary>
     </>
 }
 
-function CreatedToken(props: { token: api.AccessToken }) {
-    return <>
-        <BoxWithHeader>
-            <div class="flex flex-row items-center gap-5">
-                <div>{props.token.name}</div>
-                <div class="flex-1"></div>
-                <div>Expires {props.token.expires.toLocaleString()}</div>
-            </div>
-            <InnerElement>
+function CreatedToken(props: { token: api.AccessToken, delete: () => Promise<void> }) {
+    const [boxOpen, setBoxOpen] = createSignal(false);
+    return <OuterBox>
+        <div class="flex flex-row items-center gap-0 bg-white shadow-sm rounded-md">
+            <button class="cursor-pointer p-2.5 w-full" onclick={() => setBoxOpen(!boxOpen())}>
+                <div class="flex flex-row items-center gap-5">
+                    <div>{props.token.name}</div>
+                    <div class="flex-1"></div>
+                    <div>Expires {Temporal.Instant.from(props.token.expires).toLocaleString()}</div>
+                </div>
+            </button>
+            <button class="cursor-pointer text-red-500 p-2.5 border-l-slate-200 border-l-2 hover:bg-slate-200" onclick={async () => {
+                // TODO: should this open a confirmation window of some sort?
+                // TODO: unify GUI for deletion/save/cancel
+                await props.delete();
+            }}>
+                <div class="flex flex-row items-center gap-2.5">
+                    <div>Delete</div>
+                    <Icon class="size-5" icon={DELETE}/>
+                </div>
+            </button>
+        </div>
+        <Show when={boxOpen()}>
+            <div class="py-2.5"><InnerElement>
                 <div class="flex flex-col gap-2">
                     <div class="grid grid-cols-[fit-content(100%)_auto] gap-2">
                         <div class="my-auto">Key</div>
@@ -96,11 +166,24 @@ function CreatedToken(props: { token: api.AccessToken }) {
                             <div class="my-auto">Token</div>
                             <TextCopy text={props.token.token!}/>
                         </Show>
+
+                        <div class={"my-auto"}>Repositories</div>
+                        <TextList entries={() => props.token.repositories}/>
+
+                        <div class={"my-auto"}>Namespaces</div>
+                        <TextList entries={() => props.token.namespaces}/>
+                    </div>
+                    <div class="font-bold">Permissions</div>
+                    <div class="grid gap-2 grid-flow-row">
+                        <div class="flex flex-row gap-2.5 items-center">
+                            <input type="checkbox" checked={props.token.canpublish} disabled={true} readonly={true} />
+                            <div class="text-slate-600">Publishing</div>
+                        </div>
                     </div>
                 </div>
-            </InnerElement>
-        </BoxWithHeader>
-    </>
+            </InnerElement></div>
+        </Show>
+    </OuterBox>
 }
 
 function NamespaceList() {

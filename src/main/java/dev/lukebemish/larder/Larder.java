@@ -27,6 +27,10 @@ import io.pebbletemplates.pebble.PebbleEngine;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.StreamWriteFeature;
+import tools.jackson.core.json.JsonFactory;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -56,6 +60,12 @@ public class Larder {
     public static final Key<ModelConnection> CONNECTION_KEY = new Key<>("orm model connection");
     public static final Key<PebbleEngine> TEMPLATE_ENGINE_KEY = new Key<>("pebble template engine");
     public static final Key<Larder> APPLICATION_KEY = new Key<>("application context");
+
+    private static final JsonFactory factory = new JsonFactory();
+    public static final JsonMapper JSON_MAPPER = JsonMapper.builder(factory)
+        .enable(SerializationFeature.FAIL_ON_EMPTY_BEANS)
+        .disable(StreamWriteFeature.AUTO_CLOSE_TARGET)
+        .build();
 
     private final boolean isDev;
     private final ModelConnection modelConnection;
@@ -96,7 +106,7 @@ public class Larder {
             // General
             config.router.ignoreTrailingSlashes = true;
 
-            config.jsonMapper(new JavalinJackson3());
+            config.jsonMapper(new JavalinJackson3(JSON_MAPPER, false));
 
             // Error handling
             config.routes.exception(UnauthorizedResponse.class, (e, ctx) -> {

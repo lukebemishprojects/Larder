@@ -18,6 +18,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "solid-js": "^1.9.14",
     "tailwindcss": "^4.3.3",
+    "temporal-polyfill": "^1.0.4",
     "zod": "^4.4.3"
   },
   "allowScripts": {

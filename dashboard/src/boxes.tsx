@@ -1,5 +1,5 @@
-import { Accessor, createSignal, For, Show, type JSX, } from 'solid-js';
-import {COPY, Icon} from "./icons";
+import {Accessor, createSignal, For, Show, type JSX, Setter,} from 'solid-js';
+import {COPY, REMOVE, Icon} from "./icons";
 
 export function OuterBox(props: { children: JSX.Element }) {
     return (
@@ -53,6 +53,37 @@ export function TextInput(props: { type: string, placeholder: string, value: str
             props.onchange(e.target.value)
         }} {...props.input} />
     )
+}
+
+export function TextList(props: { entries: Accessor<string[]>, setentries?: Setter<string[]> }) {
+    const mutable = !(props.setentries === undefined);
+    const [toAdd, setToAdd] = createSignal("");
+
+    return <div class={`flex flex-row items-center gap-2 ${mutable ? "bg-white" : "bg-slate-150 text-slate-600"} border-1 rounded-md p-2.5 text-sm focus-within:inset-ring-blue-500 focus-within:border-1 focus-within:ring-0 focus-within:outline-none focus-within:shadow-none focus-within:inset-ring-2 w-full`}>
+        <For each={props.entries()}>{(item, index) => (<>
+            <div class="rounded-lg bg-slate-600 text-white px-2 flex flex-row gap-2">
+                <div>{item}</div>
+                {mutable ? <button class="cursor-pointer" onclick={() => {
+                    const entries = [ ...props.entries() ];
+                    entries.splice(index(), 1);
+                    props.setentries!(entries);
+                }}>
+                    <Icon class="size-3" icon={REMOVE}/>
+                </button> : <></>}
+            </div>
+        </>)}</For>
+        {mutable ? <input class="focus:outline-none focus:shadow-none focus:border-0 focus:ring-0 w-full flex-1"
+            type="text" value={toAdd()} oninput={(e) => {
+                setToAdd(e.target.value);
+            }} onkeydown={async (e) => {
+                if (e.key == 'Enter') {
+                    const entry = toAdd();
+                    props.setentries!([ ...props.entries() ].concat([entry]));
+                    setToAdd("");
+                }
+            }}
+        /> : <></>}
+    </div>
 }
 
 export function TextCopy(props: { children?: JSX.Element, text: string }) {

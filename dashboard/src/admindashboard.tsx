@@ -8,7 +8,7 @@ import { Dropdown } from './Dropdown';
 import { z } from 'zod';
 import { orErrorSignal, OrError } from './utils';
 import { createStore, SetStoreFunction, unwrap } from 'solid-js/store';
-import {DOTDOTDOT, DROPDOWN, Icon} from "./icons";
+import {DOTDOTDOT, DROPDOWN, DELETE, Icon} from "./icons";
 
 function NamespaceCreation(props: { user: string, mutate: Setter<api.Namespaces | undefined>, refetch: () => Promise<unknown> | unknown }) {
     const [status, setStatus] = orErrorSignal();
@@ -319,7 +319,7 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
                         }
                         setStatus({ status: "working" });
                         try {
-                            await api.postJSON(`/dashboard/admin/api/repositories/${props.repository.name}`, current);
+                            await api.postJSON(`/dashboard/admin/api/repositories/${props.repository.name}`, current, api.Repository);
                             setStatus({ status: "ok" });
                         } catch (err: any) {
                             console.error(err);
@@ -346,7 +346,10 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
                         <Button onclick={() => {
                             setIsDeleting(true);
                         }}>
-                            Delete
+                            <div class="flex flex-row">
+                                <div>Delete</div>
+                                <Icon class="size-5" icon={DELETE}/>
+                            </div>
                         </Button>
                     </Show>
                     <Show when={isDeleting()}>
@@ -411,7 +414,7 @@ export function RepositoriesList() {
                     })
 
                     try {
-                        await api.postJSON(`/dashboard/admin/api/repositories/${current.name}`, current);
+                        await api.postJSON(`/dashboard/admin/api/repositories/${current.name}`, current, api.Repository);
                         setStatus({ status: "ok" });
                     } catch (err: any) {
                         console.error(err);
@@ -436,6 +439,7 @@ export function RepositoriesList() {
 }
 
 function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: SetStoreFunction<api.BackendConfiguration>, toSetS3: api.S3Backend, setToSetS3: SetStoreFunction<api.S3Backend>, toSetFilesystem: api.FilesystemBackend, setToSetFilesystem: SetStoreFunction<api.FilesystemBackend> }) {
+    // TODO: rethink this to work like repositories and avoid triple-configuration
     createEffect(() => {
         if (props.toSet.type == "s3backend") {
             if (props.toSet.s3backend === undefined) {
@@ -517,6 +521,7 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
             {(item) => {
                 const [ toSet, setToSet ] = createStore<api.BackendConfiguration>({
                     s3backend: undefined,
+                    filesystembackend: undefined,
                     ...item()
                 });
                 const [ toSetS3, setToSetS3 ] = createStore<api.S3Backend>(item().s3backend ? { ...item().s3backend! } : api.newS3Backend());
@@ -570,7 +575,7 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                                         current.filesystembackend = { ...unwrap(toSetFilesystem) };
                                     }
                                     try {
-                                        await api.postJSON(`/dashboard/admin/api/backends/${props.backend.id}`, current);
+                                        await api.postJSON(`/dashboard/admin/api/backends/${props.backend.id}`, current, api.BackendConfiguration);
                                         setStatus({ status: "ok" });
                                     } catch (err: any) {
                                         console.error(err);
@@ -600,7 +605,10 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                                     <Button onclick={() => {
                                         setIsDeleting(true);
                                     }}>
-                                        Delete
+                                        <div class="flex flex-row">
+                                            <div>Delete</div>
+                                            <Icon class="size-5" icon={DELETE}/>
+                                        </div>
                                     </Button>
                                 </Show>
                                 <Show when={isDeleting()}>
@@ -675,7 +683,7 @@ export function BackendsList() {
                     setToCreateFilesystem(api.newFilesystemBackend());
                     setStatus({ status: "working" });
                     try {
-                        await api.postJSON(`/dashboard/admin/api/backends`, current);
+                        await api.postJSON(`/dashboard/admin/api/backends`, current, api.BackendConfiguration);
                         setStatus({ status: "ok" });
                     } catch (err: any) {
                         console.error(err);

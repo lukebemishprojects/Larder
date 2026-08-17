@@ -75,7 +75,7 @@ final class ApiTokens {
                     namespaces,
                     repositories,
                     token.canPublish(),
-                    token.expiry()
+                    token.expiry().toInstant(ZoneOffset.ofHours(0))
                 ));
             }
             context.json(tokens);
@@ -196,7 +196,7 @@ final class ApiTokens {
                 tokenRequest.namespaces(),
                 tokenRequest.repositories(),
                 tokenRequest.canPublish(),
-                accessToken.expiry()
+                accessToken.expiry().toInstant(ZoneOffset.ofHours(0))
             ));
         });
     }

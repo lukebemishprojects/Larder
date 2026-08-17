@@ -62,7 +62,7 @@ public class ORMPostProcessor implements PostProcessor {
                         if (types.isAssignable(mirror, modelType)) {
                             annotationWork = cv -> {
                                 var av = cv.visitAnnotation(
-                                    "Ldev/lukebemish/larder/orm/World$BelongsTo",
+                                    "Ldev/lukebemish/larder/orm/World$BelongsTo;",
                                     true
                                 );
                                 av.visit("value", Type.getObjectType("dev/lukebemish/larder/schema/LarderWorld"));

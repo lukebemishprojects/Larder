@@ -32,9 +32,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
-import tools.jackson.core.json.JsonFactory;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.exc.JsonNodeException;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -74,9 +72,6 @@ import java.util.stream.Collectors;
 
 final class OIDCAuthenticator {
     private static final Logger logger = LoggerFactory.getLogger(OIDCAuthenticator.class);
-
-    private static final JsonFactory factory = new JsonFactory();
-    private static final ObjectMapper mapper = new ObjectMapper(factory);
 
     private final Key hmacKey;
     private final Key aesKey;
@@ -137,7 +132,7 @@ final class OIDCAuthenticator {
 
             var wellKnownUrl = new URI(issuer + (issuer.endsWith("/") ? "" : "/") + ".well-known/openid-configuration").toURL();
             try (var config = wellKnownUrl.openStream()) {
-                var configTree = mapper.readTree(config);
+                var configTree = Larder.JSON_MAPPER.readTree(config);
                 var authorization = configTree.get("authorization_endpoint").asString();
                 var tokenEndpoint = configTree.get("token_endpoint").asString();
                 this.endSessionEndpoint = configTree.get("end_session_endpoint").asString();
@@ -299,7 +294,7 @@ final class OIDCAuthenticator {
             userInfoRequest.addQuerystringParameter("schema", "openid");
             var userInfo = oauth2service.execute(userInfoRequest);
 
-            var userInfoJson = mapper.readTree(userInfo.getBody());
+            var userInfoJson = Larder.JSON_MAPPER.readTree(userInfo.getBody());
             var userInfoSub = userInfoJson.get("sub").asString();
             if (!userInfoSub.equals(sub)) {
                 // These don't match... so we need to error
@@ -332,8 +327,8 @@ final class OIDCAuthenticator {
             // Finally, make the session JWT token and add as a cookie
             // This requires knowing roles
 
-            var idTokenClaimsJson = mapper.valueToTree(idTokenJwt.getPayload());
-            var infoForTest = mapper.createObjectNode();
+            var idTokenClaimsJson = Larder.JSON_MAPPER.valueToTree(idTokenJwt.getPayload());
+            var infoForTest = Larder.JSON_MAPPER.createObjectNode();
             infoForTest.set("token", idTokenClaimsJson);
             infoForTest.set("userinfo", userInfoJson);
             boolean isAdmin;
@@ -416,12 +411,12 @@ final class OIDCAuthenticator {
     private static final String JWT_HEADER = Base64.getUrlEncoder().encodeToString("{\"typ\":\"JWT\",\"alg\":\"HS256\"}".getBytes(StandardCharsets.UTF_8));
 
     private String userJwt(String idToken, UUID userId, Set<? extends Role> roles) {
-        ObjectNode node = mapper.createObjectNode();
+        ObjectNode node = Larder.JSON_MAPPER.createObjectNode();
         node.put("user", userId.toString());
 
         node.put("id", idToken);
 
-        var rolesNode = mapper.createArrayNode();
+        var rolesNode = Larder.JSON_MAPPER.createArrayNode();
         for (var role : roles) {
             rolesNode.add(role.unique());
         }
@@ -430,7 +425,7 @@ final class OIDCAuthenticator {
     }
 
     private String redirectJwt(String destination) {
-        ObjectNode node = mapper.createObjectNode();
+        ObjectNode node = Larder.JSON_MAPPER.createObjectNode();
         node.put("destination", destination);
         return jwt(node);
     }
@@ -494,7 +489,7 @@ final class OIDCAuthenticator {
                     // Not our session token!
                     return null;
                 }
-                var bodyJson = mapper.readTree(body);
+                var bodyJson = Larder.JSON_MAPPER.readTree(body);
                 if (bodyJson.get("alive").asInt() != alive.get()) {
                     // The token has been invalidated
                     return null;
