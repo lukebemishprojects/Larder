@@ -5,7 +5,7 @@ autoservice = "1.1.1"
 javacpostprocessor = "0.1.10"
 polymorphicsignatures = "0.1.1"
 
-javalin = "7.2.2"
+javalin = "7.2.3"
 postgresql = "42.7.13"
 slf4j = "2.0.18"
 jackson = "3.2.1"
