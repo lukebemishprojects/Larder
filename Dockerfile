@@ -8,7 +8,7 @@ RUN --mount=type=cache,target=/root/.npm \
     npm run --prefix indices build && \
     npm run --prefix dashboard build
 
-FROM amazoncorretto:25.0.4-alpine3.24 AS jvmsource
+FROM amazoncorretto:26.0.2-alpine3.24 AS jvmsource
 RUN rm -rf /lib/apk
 
 FROM gradle:9.7.0-jdk25-alpine AS gradlebuilder
