@@ -28,7 +28,7 @@ export function Dropdown(props: { children: JSX.Element, entries: DropdownEntry[
 	}
 
 	return (
-		<div class="relative inline-block" onfocusout={({ relatedTarget, currentTarget }) => {
+		<div class="relative inline-block p-0" onfocusout={({ relatedTarget, currentTarget }) => {
 				if (relatedTarget instanceof HTMLElement && currentTarget.contains(relatedTarget)) return
 				setDropdownVisible(false)
 		}}>

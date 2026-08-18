@@ -227,12 +227,10 @@ final class Api {
                 }
             }
 
-            connection.delete(new RepositoryIndex.ByRepository(id)); // delete all indices
             connection.delete(new TokenRepository.ByRepository(id)); // delete all associations of keys with this repository
             for (var deployment : connection.select(new Deployment.ByRepository(id))) {
                 deployment.remove(connection);
             }
-            connection.delete(new Package.ByRepository(id)); // delete indexed packages for this repository
             connection.delete(id);
             context.status(HttpStatus.NO_CONTENT);
         });

@@ -3,12 +3,16 @@ import 'solid-devtools';
 import './app.css';
 import * as api from './api';
 import { createContext, createEffect, createResource, createMemo, createSignal, ErrorBoundary, For, Setter, Show, useContext } from 'solid-js';
-import { BoxInside, BoxWithHeader, Button, InnerElement, InnerHoverElements, OuterBox, TextInput, TextInputGroup } from './boxes';
+import {
+    BoxInside, BoxWithHeader, Button, InnerElement, InnerHoverElements, OuterBox, TextInputRow, TextInputGroup,
+    RowOf, BoxWithPartialHeader
+} from './boxes';
 import { Dropdown } from './Dropdown';
 import { z } from 'zod';
 import { orErrorSignal, OrError } from './utils';
 import { createStore, SetStoreFunction, unwrap } from 'solid-js/store';
 import {DOTDOTDOT, DROPDOWN, DELETE, Icon} from "./icons";
+import {Cancel, Delete, Save} from "./HeaderButtons";
 
 function NamespaceCreation(props: { user: string, mutate: Setter<api.Namespaces | undefined>, refetch: () => Promise<unknown> | unknown }) {
     const [status, setStatus] = orErrorSignal();
@@ -132,11 +136,13 @@ export function AdminUsers() {
             <Show when={users()}>
                 <For each={users()!}>
                     {(user) => <BoxWithHeader>
-                        <div class="flex flex-row items-center gap-5">
-                            <div class="">{user.email}</div>
-                            <div class="flex-1"></div>
-                            <div class="font-mono text-xs text-slate-600">{user.id}</div>
-                        </div>
+                        <RowOf>
+                            <div class="flex flex-row items-center gap-5">
+                                <div class="">{user.email}</div>
+                                <div class="flex-1"></div>
+                                <div class="font-mono text-xs text-slate-600">{user.id}</div>
+                            </div>
+                        </RowOf>
                         <>
                             <InnerElement><div class="text-slate-600 text-base">Namespaces</div></InnerElement>
                             <NamespaceList user={user.id} />
@@ -176,7 +182,7 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
             </div>
             <Show when={props.value.supportspublishportal}>
                 <div class="flex flex-col gap-2 pl-2.5">
-                    <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={context.backends.map((backend) => {
+                    <RowOf><Dropdown dropdownWidth='w-96' classes="p-2.5 font-semibold text-sm rounded-md hover:bg-slate-150" entries={context.backends.map((backend) => {
                         return {
                             value: <div class="flex flex-row gap-2.5 w-full items-center">
                                 <div>{api.backendTypePrettyName(backend.type)}</div>
@@ -206,13 +212,14 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                             </div>
                         })() : "Select deployment staging backend"}
                         <Icon class="-mr-1 size-5 text-slate-600" icon={DROPDOWN}/>
-                    </Dropdown>
+                        <div class="flex-1"></div>
+                    </Dropdown></RowOf>
                     <Show when={deploymentBackendType() == "s3backend"}>
-                        <TextInput type="text" placeholder="S3 bucket" value={props.value.deployments3backend!.bucket} onchange={(v) => {props.set("deployments3backend", "bucket", v)}} />
-                        <TextInput type="text" placeholder="Prefix in bucket" value={props.value.deployments3backend!.prefix} onchange={(v) => {props.set("deployments3backend", "prefix", v)}} />
+                        <TextInputRow type="text" placeholder="S3 bucket" value={props.value.deployments3backend!.bucket} onchange={(v) => {props.set("deployments3backend", "bucket", v)}} />
+                        <TextInputRow type="text" placeholder="Prefix in bucket" value={props.value.deployments3backend!.prefix} onchange={(v) => {props.set("deployments3backend", "prefix", v)}} />
                     </Show>
                     <Show when={deploymentBackendType() == "filesystembackend"}>
-                        <TextInput type="text" placeholder="Prefix in filesystem" value={props.value.deploymentfilesystembackend!.prefix} onchange={(v) => {props.set("deploymentfilesystembackend", "prefix", v)}} />
+                        <TextInputRow type="text" placeholder="Prefix in filesystem" value={props.value.deploymentfilesystembackend!.prefix} onchange={(v) => {props.set("deploymentfilesystembackend", "prefix", v)}} />
                     </Show>
                 </div>
             </Show>
@@ -249,7 +256,7 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                     }} />
                 </div>
             </Show>
-            <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={context.backends.map((backend) => {
+            <RowOf><Dropdown dropdownWidth='w-96' classes="p-2.5 font-semibold text-sm rounded-md hover:bg-slate-150" entries={context.backends.map((backend) => {
                 return {
                     value: <div class="flex flex-row gap-2.5 w-full items-center">
                         <div>{api.backendTypePrettyName(backend.type)}</div>
@@ -279,13 +286,14 @@ function RepositorySettings(props: { set: SetStoreFunction<api.Repository>, valu
                     </div>
                 })() : "Select backend"}
                 <Icon class="-mr-1 size-5 text-slate-600" icon={DROPDOWN}/>
-            </Dropdown>
+                <div class="flex-1"></div>
+            </Dropdown></RowOf>
             <Show when={backendType() == "s3backend"}>
-                <TextInput type="text" placeholder="S3 bucket" value={props.value.s3backend!.bucket} onchange={(v) => {props.set("s3backend", "bucket", v)}} />
-                <TextInput type="text" placeholder="Prefix in bucket" value={props.value.s3backend!.prefix} onchange={(v) => {props.set("s3backend", "prefix", v)}} />
+                <TextInputRow type="text" placeholder="S3 bucket" value={props.value.s3backend!.bucket} onchange={(v) => {props.set("s3backend", "bucket", v)}} />
+                <TextInputRow type="text" placeholder="Prefix in bucket" value={props.value.s3backend!.prefix} onchange={(v) => {props.set("s3backend", "prefix", v)}} />
             </Show>
             <Show when={backendType() == "filesystembackend"}>
-                <TextInput type="text" placeholder="Prefix in filesystem" value={props.value.filesystembackend!.prefix} onchange={(v) => {props.set("filesystembackend", "prefix", v)}} />
+                <TextInputRow type="text" placeholder="Prefix in filesystem" value={props.value.filesystembackend!.prefix} onchange={(v) => {props.set("filesystembackend", "prefix", v)}} />
             </Show>
         </div>
     );
@@ -296,83 +304,60 @@ function SingleRepository(props: { repository: api.Repository, mutate: Setter<ap
     const [ toSet, setToSet ] = createStore(structuredClone({
         ...props.repository
     }));
-    const [ isDeleting, setIsDeleting ] = createSignal(false);
     const isDirty = createMemo(() => {
         return !api.zodEquals(api.Repository, toSet, props.repository);
     });
     const [ status, setStatus ] = orErrorSignal();
-    return <BoxWithHeader>
-        <div class="flex flex-row gap-5 items-center">
-            <div>{props.repository.name}</div>
-            <div class="flex-1"></div>
-        </div>
+    return <BoxWithPartialHeader>
+        {(toggle) => <RowOf>
+            <button class="flex" onclick={toggle}>{props.repository.name}<div class="flex-1"></div></button>
+            <Cancel oncancel={() => {
+                if (isDirty()) {
+                    setToSet({
+                        ...props.repository
+                    });
+                }
+            }} isdirty={isDirty}/>
+            <Save onsave={async () => {
+                const current: api.Repository = { ...unwrap(toSet) }
+                if (!api.validateRepository(current, setStatus)) {
+                    return;
+                }
+                setStatus({ status: "working" });
+                try {
+                    await api.postJSON(`/dashboard/admin/api/repositories/${props.repository.name}`, current, api.Repository);
+                    setStatus({ status: "ok" });
+                } catch (err: any) {
+                    console.error(err);
+                    setStatus({ status: "error", err: `Error: ${err}` });
+                    return;
+                }
+                await props.refetch();
+            }} isdirty={isDirty}/>
+            <Delete ondelete={async () => {
+                setStatus({ status: "working" });
+                try {
+                    await api.deleteURL(`/dashboard/admin/api/repositories/${props.repository.name}`);
+                    setStatus({ status: "ok" });
+                    await props.refetch();
+                } catch (err: any) {
+                    console.error(err);
+                    setStatus({ status: "error", err: `${err}` });
+                    return;
+                }
+            }} confirmation={{ confirm: props.repository.name }}>
+                Are you sure you want to delete this repository? Deletion is permanent and cannot be undone.
+            </Delete>
+        </RowOf>}
         <>
             <InnerElement>
                 <RepositorySettings value={toSet} set={setToSet} />
             </InnerElement>
             <InnerElement>
-                <div class="flex flex-row gap-2.5 w-full items-center">
-                    <Button disabled={!isDirty()} onclick={async () => {
-                        const current: api.Repository = { ...unwrap(toSet) }
-                        if (!api.validateRepository(current, setStatus)) {
-                            return;
-                        }
-                        setStatus({ status: "working" });
-                        try {
-                            await api.postJSON(`/dashboard/admin/api/repositories/${props.repository.name}`, current, api.Repository);
-                            setStatus({ status: "ok" });
-                        } catch (err: any) {
-                            console.error(err);
-                            setStatus({ status: "error", err: `Error: ${err}` });
-                            return;
-                        }
-                        await props.refetch();
-                    }}>
-                        Save
-                    </Button>
-                    <Button onclick={() => {
-                        if (isDeleting()) {
-                            setIsDeleting(false);
-                        }
-                        if (isDirty()) {
-                            setToSet({
-                                ...props.repository
-                            });
-                        }
-                    }} disabled={!isDirty() && !isDeleting()}>
-                        Cancel
-                    </Button>
-                    <Show when={!isDeleting()}>
-                        <Button onclick={() => {
-                            setIsDeleting(true);
-                        }}>
-                            <div class="flex flex-row">
-                                <div>Delete</div>
-                                <Icon class="size-5" icon={DELETE}/>
-                            </div>
-                        </Button>
-                    </Show>
-                    <Show when={isDeleting()}>
-                        <TextInputGroup type="text" placeholder={"Type '"+props.repository.name+"' to confirm deletion. Deletion is permanent and cannot be undone"} submit="Delete" allowenter={false} onsubmit={async (target) => {
-                            if (target.value === props.repository.name) {
-                                setStatus({ status: "working" });
-                                try {
-                                    await api.deleteURL(`/dashboard/admin/api/repositories/${props.repository.name}`);
-                                    setStatus({ status: "ok" });
-                                    await props.refetch();
-                                } catch (err: any) {
-                                    console.error(err);
-                                    setStatus({ status: "error", err: `${err}` });
-                                    return;
-                                }
-                            }
-                        }} />
-                    </Show>
-                </div>
                 <OrError get={status} />
             </InnerElement>
         </>
-    </BoxWithHeader>
+    </BoxWithPartialHeader>
 }
 
 export function RepositoriesList() {
@@ -466,10 +451,10 @@ function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: Set
         <div class="flex flex-col gap-2">
             <Show when={props.toSet.type == "s3backend"}>
                 <div class="flex flex-col gap-2">
-                    <TextInput type="text" placeholder="Region" value={props.toSetS3.region} onchange={(v) => {props.setToSetS3("region", v)}} />
-                    <TextInput type="text" placeholder="Endpoint" value={props.toSetS3.endpoint} onchange={(v) => {props.setToSetS3("endpoint", v)}} />
-                    <TextInput type="text" placeholder="Access Key ID" value={props.toSetS3.accesskeyid} onchange={(v) => {props.setToSetS3("accesskeyid", v)}} />
-                    <TextInput type="text" placeholder="Secret Access Key" value={props.toSetS3.secretaccesskey ?? ""} onchange={(v) => {
+                    <TextInputRow type="text" placeholder="Region" value={props.toSetS3.region} onchange={(v) => {props.setToSetS3("region", v)}} />
+                    <TextInputRow type="text" placeholder="Endpoint" value={props.toSetS3.endpoint} onchange={(v) => {props.setToSetS3("endpoint", v)}} />
+                    <TextInputRow type="text" placeholder="Access Key ID" value={props.toSetS3.accesskeyid} onchange={(v) => {props.setToSetS3("accesskeyid", v)}} />
+                    <TextInputRow type="text" placeholder="Secret Access Key" value={props.toSetS3.secretaccesskey ?? ""} onchange={(v) => {
                         if (v.length > 0) {
                             props.setToSetS3("secretaccesskey", v);
                         } else {
@@ -480,7 +465,7 @@ function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: Set
             </Show>
             <Show when={props.toSet.type == "filesystembackend" && filesystemLocations()}>
                 <div class="flex flex-col gap-2">
-                    <Dropdown dropdownWidth='w-96' classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150" entries={filesystemLocations()!.map((location) => {
+                    <RowOf><Dropdown dropdownWidth='w-96' classes="p-2.5 font-semibold text-sm rounded-md hover:bg-slate-150" entries={filesystemLocations()!.map((location) => {
                         return {
                             value: <div class="flex flex-row gap-2.5 w-full items-center">
                                 <div>{location}</div>
@@ -496,7 +481,8 @@ function BackendContents(props: { toSet: api.BackendConfiguration, setToSet: Set
                             <div class="flex-1"></div>
                         </div> : "Select location"}
                         <Icon class="-mr-1 size-5 text-slate-600" icon={DROPDOWN}/>
-                    </Dropdown>
+                        <div class="flex-1"></div>
+                    </Dropdown></RowOf>
                 </div>
             </Show>
         </div>
@@ -508,7 +494,6 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
         return await api.fetchJSON(`/dashboard/admin/api/backends/${props.backend.id}`, api.BackendConfiguration);
     });
     const [ status, setStatus ] = orErrorSignal();
-    const [ isDeleting, setIsDeleting ] = createSignal(false);
     return <ErrorBoundary fallback={(error) => {
         console.error(error);
         return (<OuterBox>
@@ -537,6 +522,8 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                     if (type == "s3backend") {
                         let key: keyof api.S3Backend;
                         for (key in item().s3backend) {
+                            // TODO: make this work properly with changes to secret key
+                            //  (The easiest way to do this is to simplify this whole thing with zodEquals)
                             if (toSetS3[key] != item().s3backend![key]) {
                                 return true;
                             }
@@ -553,84 +540,62 @@ function SingleBackend(props: { backend: api.Backend, mutate: Setter<api.Backend
                     return false;
                 }
                 return <BoxWithHeader>
-                    <div class="flex flex-row gap-2.5 w-full items-center">
-                        <div>{api.backendTypePrettyName(item().type)}</div>
-                        <div class="flex-1"></div>
-                        <div class="font-mono text-xs text-slate-600">{props.backend.id}</div>
-                    </div>
+                    <RowOf>
+                        <div class="flex flex-row items-center gap-2.5">
+                            <div>{api.backendTypePrettyName(item().type)}</div>
+                            <div class="flex-1"></div>
+                            <div class="font-mono text-xs text-slate-600">{props.backend.id}</div>
+                        </div>
+                        <Cancel oncancel={() => {
+                            if (isDirty()) {
+                                setToSet({ ...item() });
+                                if (item().type == "s3backend") {
+                                    setToSetS3({...item().s3backend})
+                                } else if (item().type == "filesystembackend") {
+                                    setToSetFilesystem({...item().filesystembackend})
+                                }
+                            }
+                        }} isdirty={isDirty}/>
+                        <Save onsave={async () => {
+                            setStatus({ status: "working" });
+                            const current = { ...unwrap(toSet) }
+                            if (current.type == "s3backend") {
+                                current.s3backend = { ...unwrap(toSetS3) };
+                                setToSetS3("secretaccesskey", undefined);
+                            }
+                            if (current.type == "filesystembackend") {
+                                current.filesystembackend = { ...unwrap(toSetFilesystem) };
+                            }
+                            try {
+                                await api.postJSON(`/dashboard/admin/api/backends/${props.backend.id}`, current, api.BackendConfiguration);
+                                setStatus({ status: "ok" });
+                            } catch (err: any) {
+                                console.error(err);
+                                setStatus({ status: "error", err: `Error: ${err}` });
+                                return;
+                            }
+                            await refetch();
+                        }} isdirty={isDirty}/>
+                        <Delete ondelete={async () => {
+                            setStatus({ status: "working" });
+                            try {
+                                await api.deleteURL(`/dashboard/admin/api/backends/${props.backend.id}`);
+                                setStatus({ status: "ok" });
+                                await props.refetch();
+                            } catch (err: any) {
+                                console.error(err);
+                                setStatus({ status: "error", err: `Error: ${err}` });
+                                return;
+                            }
+                        }} confirmation={"simple"}>
+                            Are you sure you want to delete this backend? Deletion is permanent and cannot be undone.
+                        </Delete>
+                    </RowOf>
                     <>
                         <InnerElement>
                             <BackendContents toSet={toSet} setToSet={setToSet} toSetS3={toSetS3} setToSetS3={setToSetS3} toSetFilesystem={toSetFilesystem} setToSetFilesystem={setToSetFilesystem} />
                         </InnerElement>
                         <InnerElement>
-                            <div class="flex flex-row gap-2.5 w-full items-center">
-                                <Button disabled={!isDirty()} onclick={async () => {
-                                    setStatus({ status: "working" });
-                                    const current = { ...unwrap(toSet) }
-                                    if (current.type == "s3backend") {
-                                        current.s3backend = { ...unwrap(toSetS3) };
-                                        setToSetS3("secretaccesskey", undefined);
-                                    }
-                                    if (current.type == "filesystembackend") {
-                                        current.filesystembackend = { ...unwrap(toSetFilesystem) };
-                                    }
-                                    try {
-                                        await api.postJSON(`/dashboard/admin/api/backends/${props.backend.id}`, current, api.BackendConfiguration);
-                                        setStatus({ status: "ok" });
-                                    } catch (err: any) {
-                                        console.error(err);
-                                        setStatus({ status: "error", err: `Error: ${err}` });
-                                        return;
-                                    }
-                                    await refetch();
-                                }}>
-                                    Save
-                                </Button>
-                                <Button onclick={() => {
-                                    if (isDeleting()) {
-                                        setIsDeleting(false);
-                                    }
-                                    if (isDirty()) {
-                                        setToSet({ ...item() });
-                                        if (item().type == "s3backend") {
-                                            setToSetS3({...item().s3backend})
-                                        } else if (item().type == "filesystembackend") {
-                                            setToSetFilesystem({...item().filesystembackend})
-                                        }
-                                    }
-                                }} disabled={!isDirty() && !isDeleting()}>
-                                    Cancel
-                                </Button>
-                                <Show when={!isDeleting()}>
-                                    <Button onclick={() => {
-                                        setIsDeleting(true);
-                                    }}>
-                                        <div class="flex flex-row">
-                                            <div>Delete</div>
-                                            <Icon class="size-5" icon={DELETE}/>
-                                        </div>
-                                    </Button>
-                                </Show>
-                                <Show when={isDeleting()}>
-                                    <Button onclick={async () => {
-                                        setStatus({ status: "working" });
-                                        try {
-                                            await api.deleteURL(`/dashboard/admin/api/backends/${props.backend.id}`);
-                                            setStatus({ status: "ok" });
-                                            await props.refetch();
-                                        } catch (err: any) {
-                                            console.error(err);
-                                            setStatus({ status: "error", err: `Error: ${err}` });
-                                            return;
-                                        }
-                                    }}>
-                                        Confirm
-                                    </Button>
-                                    <div class="text-red-500">
-                                        Deletion is permanent and cannot be undone. Please confirm.
-                                    </div>
-                                </Show>
-                            </div>
                             <OrError get={status} />
                         </InnerElement>
                     </>
@@ -660,9 +625,9 @@ export function BackendsList() {
         </OuterBox>)
     }}>
         <OuterBox>
-            <div class="bg-white shadow-sm rounded-md flex flex-row w-full">
-                <div class="text-sm py-2.5 px-3 flex-1">Create backend</div>
-                <Dropdown classes="py-2.5 px-3 rounded-md bg-white font-semibold text-sm border-1 hover:bg-slate-150 rounded-r-none" entries={possibleTypes.map((type) => {
+            <RowOf>
+                <div class="flex-1 text-sm">Create backend</div>
+                <Dropdown classes="p-2.5 font-semibold text-sm hover:bg-slate-150" entries={possibleTypes.map((type) => {
                     return {
                         value: api.backendTypePrettyName(type),
                         action: async () => setToCreate("type", type)
@@ -671,7 +636,7 @@ export function BackendsList() {
                     {api.backendTypePrettyName(toCreate.type)}
                     <Icon class="-mr-1 size-5 text-slate-600" icon={DROPDOWN}/>
                 </Dropdown>
-                <button class="border-l-0 font-semibold bg-white rounded-md text-sm border-1 py-2.5 px-3 block cursor-pointer hover:bg-slate-200 rounded-l-none" onclick={async () => {
+                <button class="font-semibold text-sm cursor-pointer hover:bg-slate-200" onclick={async () => {
                     const current = { ...unwrap(toCreate) }
                     if (current.type == "s3backend") {
                         current.s3backend = { ...unwrap(toCreateS3) };
@@ -695,7 +660,7 @@ export function BackendsList() {
                 }}>
                     Create
                 </button>
-            </div>
+            </RowOf>
             <BoxInside>
                 <InnerElement>
                     <BackendContents toSet={toCreate} setToSet={setToCreate} toSetS3={toCreateS3} setToSetS3={setToCreateS3} toSetFilesystem={toCreateFilesystem} setToSetFilesystem={setToCreateFilesystem} />

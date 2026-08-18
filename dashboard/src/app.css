@@ -16,3 +16,11 @@
 @utility bg-slate-350 {
     background-color: var(--color-bg-350);
 }
+
+@utility text-slate-150 {
+    color: var(--color-bg-150);
+}
+
+@utility text-slate-350 {
+    color: var(--color-bg-350);
+}

@@ -8,7 +8,7 @@ import './app.css';
 import * as api from './api';
 import * as admin from './admindashboard';
 import {createMemo, createResource, createSignal, ErrorBoundary, For, Show, useContext} from 'solid-js';
-import {BoxInside, BoxWithHeader, InnerElement, OuterBox, TextCopy, TextInputGroup, TextList} from './boxes';
+import {BoxInside, BoxWithHeader, InnerElement, OuterBox, RowOf, TextCopyRow, TextInputGroup, TextListRow} from './boxes';
 import { OrError, orErrorSignal } from './utils';
 import { z } from 'zod';
 import {createStore, unwrap} from "solid-js/store";
@@ -16,6 +16,7 @@ import {createStore, unwrap} from "solid-js/store";
 // Safari (perhaps all webkit browsers?) does not currently support this without a polyfill
 import { Temporal } from 'temporal-polyfill'
 import {DELETE, Icon} from "./icons";
+import {Delete} from "./HeaderButtons";
 
 const root = document.getElementById('root');
 
@@ -91,10 +92,10 @@ function TokensList() {
                         <div class="flex flex-col gap-2">
                             <div class="grid grid-cols-[fit-content(100%)_auto] gap-2">
                                 <div class={"my-auto"}>Repositories</div>
-                                <TextList entries={() => toCreate.repositories} setentries={(entries) => setToCreate("repositories", entries)}/>
+                                <TextListRow entries={() => toCreate.repositories} setentries={(entries) => setToCreate("repositories", entries)}/>
 
                                 <div class={"my-auto"}>Namespaces</div>
-                                <TextList entries={() => toCreate.namespaces} setentries={(entries) => setToCreate("namespaces", entries)}/>
+                                <TextListRow entries={() => toCreate.namespaces} setentries={(entries) => setToCreate("namespaces", entries)}/>
 
                                 <div class={"my-auto"}>Lifetime</div>
                                 <TextInputGroup type="number" placeholder="Expiration days" accessor={() => toCreate.lifetime?.toString() || ""} setter={(val) => {
@@ -136,42 +137,35 @@ function TokensList() {
 function CreatedToken(props: { token: api.AccessToken, delete: () => Promise<void> }) {
     const [boxOpen, setBoxOpen] = createSignal(false);
     return <OuterBox>
-        <div class="flex flex-row items-center gap-0 bg-white shadow-sm rounded-md">
-            <button class="cursor-pointer p-2.5 w-full" onclick={() => setBoxOpen(!boxOpen())}>
+        <RowOf>
+            <button class="cursor-pointer" onclick={() => setBoxOpen(!boxOpen())}>
                 <div class="flex flex-row items-center gap-5">
                     <div>{props.token.name}</div>
                     <div class="flex-1"></div>
                     <div>Expires {Temporal.Instant.from(props.token.expires).toLocaleString()}</div>
                 </div>
             </button>
-            <button class="cursor-pointer text-red-500 p-2.5 border-l-slate-200 border-l-2 hover:bg-slate-200" onclick={async () => {
-                // TODO: should this open a confirmation window of some sort?
-                // TODO: unify GUI for deletion/save/cancel
-                await props.delete();
-            }}>
-                <div class="flex flex-row items-center gap-2.5">
-                    <div>Delete</div>
-                    <Icon class="size-5" icon={DELETE}/>
-                </div>
-            </button>
-        </div>
+            <Delete ondelete={props.delete} confirmation={"simple"}>
+                Are you sure you want to delete this token? Deleting a token will revoke it, permanently, and cannot be undone.
+            </Delete>
+        </RowOf>
         <Show when={boxOpen()}>
             <div class="py-2.5"><InnerElement>
                 <div class="flex flex-col gap-2">
-                    <div class="grid grid-cols-[fit-content(100%)_auto] gap-2">
+                    <div class="grid grid-cols-[fit-content(100%)_minmax(0,1fr)] gap-2">
                         <div class="my-auto">Key</div>
-                        <TextCopy text={props.token.key}/>
+                        <TextCopyRow text={props.token.key}/>
 
                         <Show when={props.token.token}>
                             <div class="my-auto">Token</div>
-                            <TextCopy text={props.token.token!}/>
+                            <TextCopyRow text={props.token.token!}/>
                         </Show>
 
                         <div class={"my-auto"}>Repositories</div>
-                        <TextList entries={() => props.token.repositories}/>
+                        <TextListRow entries={() => props.token.repositories}/>
 
                         <div class={"my-auto"}>Namespaces</div>
-                        <TextList entries={() => props.token.namespaces}/>
+                        <TextListRow entries={() => props.token.namespaces}/>
                     </div>
                     <div class="font-bold">Permissions</div>
                     <div class="grid gap-2 grid-flow-row">
@@ -225,11 +219,13 @@ function NamespaceList() {
             <Show when={namespaces()}>
             <For each={namespaces()!}>
                 {(namespace) => <BoxWithHeader>
-                    <div class="flex flex-row gap-5 items-center">
-                        <div class={namespace.confirmed ? "font-mono" : "font-mono italic"}>{namespace.namespace}</div>
-                        <div class="flex-1"></div>
-                        {namespace.confirmed ? <></> : <div class="text-xs italic">(pending)</div>}
-                    </div>
+                    <RowOf>
+                        <div class="flex flex-row items-center gap-5">
+                            <div class={namespace.confirmed ? "font-mono" : "font-mono italic"}>{namespace.namespace}</div>
+                            <div class="flex-1"></div>
+                            {namespace.confirmed ? <></> : <div class="text-xs italic">(pending)</div>}
+                        </div>
+                    </RowOf>
                     <></>
                 </BoxWithHeader>}
             </For>

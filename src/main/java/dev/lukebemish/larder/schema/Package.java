@@ -60,6 +60,9 @@ public record Package(Identifier<Repository> source, ModuleComponentIdentifier v
         ModuleComponentIdentifier.representation(Package::value),
         (it, source, value) -> {
             var timestamp = it.field("timestamp", DatabasePrimitiveType.TIMESTAMP, Package::timestamp);
+
+            it.partial(BY_REPOSITORY, source, ByRepository::repository);
+
             return it.build("packages", result -> new Package(
                 source.get(result),
                 value.get(result),

@@ -142,7 +142,7 @@ export function validateAccessTokenRequest(req: AccessTokenRequest, setStatus: S
         setStatus({ status: "error", err: "Access tokens should have valid repositories." });
         return false;
     }
-    if (req.lifetime <= 0 || req.lifetime > 90) {
+    if (req.lifetime <= 0 || req.lifetime > 60) {
         setStatus({ status: "error", err: "Access tokens should have a positive lifetime less than 90 days." });
         return false;
     }
