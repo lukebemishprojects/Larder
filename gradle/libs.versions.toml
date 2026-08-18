@@ -8,7 +8,7 @@ polymorphicsignatures = "0.1.1"
 javalin = "7.2.3"
 postgresql = "42.7.13"
 slf4j = "2.0.18"
-jackson = "3.2.1"
+jackson = "3.2.2"
 javauuidgenerator = "5.2.0"
 jsonata4java = "3.0.0"
 
