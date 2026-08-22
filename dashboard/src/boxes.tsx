@@ -130,7 +130,7 @@ export function TextCopy(props: { children?: JSX.Element, text: string }) {
             <Show when={showCopied()}>
                 <div class="py-2.5">Copied!</div>
             </Show>
-            <Icon class="size-5 py-2.5" icon={COPY}/>
+            <Icon class="size-5" icon={COPY}/>
         </div>
     </button>;
 }
