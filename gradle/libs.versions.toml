@@ -17,6 +17,8 @@ jjwt = "0.13.0"
 
 pebble = "4.1.2"
 
+lombok = "1.18.48"
+
 [libraries]
 
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
@@ -44,3 +46,5 @@ jjwt-impl = { module = "io.jsonwebtoken:jjwt-impl", version.ref = "jjwt" }
 jjwt-jackson = { module = "io.jsonwebtoken:jjwt-jackson", version.ref = "jjwt" }
 
 pebble = { module = "io.pebbletemplates:pebble", version.ref = "pebble" }
+
+lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }

@@ -11,11 +11,9 @@ import dev.lukebemish.larder.orm.ModelConnection;
 import dev.lukebemish.larder.schema.BackendConfigurationType;
 import dev.lukebemish.larder.schema.Deployment;
 import dev.lukebemish.larder.schema.FilesystemBackendConfiguration;
-import dev.lukebemish.larder.schema.Package;
 import dev.lukebemish.larder.schema.Repository;
-import dev.lukebemish.larder.schema.RepositoryIndex;
 import dev.lukebemish.larder.schema.S3BackendConfiguration;
-import dev.lukebemish.larder.schema.TokenRepository;
+import dev.lukebemish.larder.schema.RoleRepository;
 import dev.lukebemish.larder.schema.User;
 import dev.lukebemish.larder.schema.UserNamespace;
 import io.javalin.http.BadRequestResponse;
@@ -227,9 +225,9 @@ final class Api {
                 }
             }
 
-            connection.delete(new TokenRepository.ByRepository(id)); // delete all associations of keys with this repository
+            connection.delete(new RoleRepository.ByRepository(id)); // delete all associations of keys with this repository
             for (var deployment : connection.select(new Deployment.ByRepository(id))) {
-                deployment.remove(connection);
+                connection.delete(deployment);
             }
             connection.delete(id);
             context.status(HttpStatus.NO_CONTENT);

@@ -9,8 +9,10 @@ import dev.lukebemish.larder.schema.Repository;
 import dev.lukebemish.larder.schema.RepositoryBackend;
 import dev.lukebemish.larder.schema.S3Backend;
 import dev.lukebemish.larder.schema.S3BackendConfiguration;
+import dev.lukebemish.larder.utils.ExceptionalSupplier;
 import org.jspecify.annotations.Nullable;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.sql.SQLException;
@@ -19,17 +21,17 @@ public interface Backend<C extends Backend.Config<C, B>, B extends Backend<C, B>
     interface Config<C extends Config<C, B>, B extends Backend<C, B>> {}
 
     record Configured<C extends Config<C, B>, B extends Backend<C, B>>(B backend, C config) {
-        public @Nullable InputStream readPath(String relativePath) {
-            return backend.readPath(config, relativePath);
+        public @Nullable ExceptionalSupplier<InputStream, IOException> readFile(String relativePath) throws IOException {
+            return backend.readFile(config, relativePath);
         }
 
-        public OutputStream writePath(String relativePath) {
-            return backend.writePath(config, relativePath);
+        public OutputStream writePath(String relativePath) throws IOException {
+            return backend.writeFile(config, relativePath);
         }
     }
 
-    @Nullable InputStream readPath(C config, String relativePath);
-    OutputStream writePath(C config, String relativePath);
+    @Nullable ExceptionalSupplier<InputStream, IOException> readFile(C config, String relativePath) throws IOException;
+    OutputStream writeFile(C config, String relativePath) throws IOException;
 
     static Backend<?, ?> backend(RepositoryBackend backend, ModelConnection connection) throws SQLException {
         return switch (backend.type()) {

@@ -3,13 +3,16 @@ package dev.lukebemish.larder.schema;
 import dev.lukebemish.larder.orm.DatabasePrimitiveType;
 import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.Model;
+import dev.lukebemish.larder.orm.ModelConnection;
 import dev.lukebemish.larder.orm.Partial;
 import dev.lukebemish.larder.orm.Representation;
 
+import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
-public record AccessToken(UUID id, String key, byte[] salt, byte[] hash, String humanName, Identifier<User> owner, LocalDateTime expiry, boolean canPublish) implements Model.Object {
+public record AccessToken(UUID id, String key, byte[] salt, byte[] hash, String humanName, Identifier<User> owner, LocalDateTime expiry, Identifier<AccessRole> role) implements Model.Object {
     public static final Partial<AccessToken, ByOwner> BY_OWNER = new Partial<>("by_owner");
     public record ByOwner(Identifier<User> owner) implements Partial.Value<AccessToken, ByOwner> {
         @Override
@@ -26,6 +29,14 @@ public record AccessToken(UUID id, String key, byte[] salt, byte[] hash, String 
         }
     }
 
+    // Called after deletion; removes the corresponding, expired role
+    public void cleanup(ModelConnection connection) throws SQLException {
+        for (var deployment : connection.select(new Deployment.ByResponsibleRole(role))) {
+            connection.update(deployment.withResponsibleRole(Optional.empty()));
+        }
+        connection.delete(role);
+    }
+
     public static final Representation<AccessToken> REPRESENTATION = Representation.build((it, id) -> {
         var key = it.field("key", DatabasePrimitiveType.VARCHAR, AccessToken::key);
         var salt = it.field("salt", DatabasePrimitiveType.BYTEA, AccessToken::salt);
@@ -33,7 +44,7 @@ public record AccessToken(UUID id, String key, byte[] salt, byte[] hash, String 
         var humanName = it.field("humanname", DatabasePrimitiveType.VARCHAR, AccessToken::humanName);
         var owner = it.referenceField("owner", () -> User.REPRESENTATION, AccessToken::owner);
         var expiry = it.field("expiry", DatabasePrimitiveType.TIMESTAMP, AccessToken::expiry);
-        var canPublish = it.field("canpublish", DatabasePrimitiveType.BOOLEAN, AccessToken::canPublish);
+        var role = it.referenceField("role", () -> AccessRole.REPRESENTATION, AccessToken::role);
 
         it.partial(BY_KEY, key, ByKey::key);
         it.partial(BY_OWNER, owner, ByOwner::owner);
@@ -48,7 +59,7 @@ public record AccessToken(UUID id, String key, byte[] salt, byte[] hash, String 
             humanName.get(result),
             owner.get(result),
             expiry.get(result),
-            canPublish.get(result)
+            role.get(result)
         ));
     });
 }

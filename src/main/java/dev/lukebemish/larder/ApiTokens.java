@@ -3,10 +3,11 @@ package dev.lukebemish.larder;
 import dev.lukebemish.larder.api.AccessTokenApi;
 import dev.lukebemish.larder.api.AccessTokenRequest;
 import dev.lukebemish.larder.orm.Identifier;
+import dev.lukebemish.larder.schema.AccessRole;
 import dev.lukebemish.larder.schema.AccessToken;
 import dev.lukebemish.larder.schema.Repository;
-import dev.lukebemish.larder.schema.TokenNamespace;
-import dev.lukebemish.larder.schema.TokenRepository;
+import dev.lukebemish.larder.schema.RoleNamespace;
+import dev.lukebemish.larder.schema.RoleRepository;
 import dev.lukebemish.larder.schema.User;
 import io.javalin.http.BadRequestResponse;
 import io.javalin.http.Context;
@@ -61,10 +62,11 @@ final class ApiTokens {
             for (var token : c.select(new AccessToken.ByOwner(userId))) {
                 var namespaces = new ArrayList<String>();
                 var repositories = new ArrayList<String>();
-                for (var namespace : c.select(new TokenNamespace.ByToken(Identifier.of(token)))) {
+                var role = c.select(token.role());
+                for (var namespace : c.select(new RoleNamespace.ByRole(token.role()))) {
                     namespaces.add(namespace.value());
                 }
-                for (var repository : c.select(new TokenRepository.ByToken(Identifier.of(token)))) {
+                for (var repository : c.select(new RoleRepository.ByRole(token.role()))) {
                     var repo = c.select(repository.value());
                     repositories.add(repo.name());
                 }
@@ -74,7 +76,7 @@ final class ApiTokens {
                     null,
                     namespaces,
                     repositories,
-                    token.canPublish(),
+                    role.canPublish(),
                     token.expiry().toInstant(ZoneOffset.ofHours(0))
                 ));
             }
@@ -102,6 +104,7 @@ final class ApiTokens {
                 throw new NotFoundResponse("Token not found");
             }
             c.delete(Identifier.of(token.getFirst()));
+            token.getFirst().cleanup(c);
             context.status(HttpStatus.NO_CONTENT);
         });
     }
@@ -168,6 +171,14 @@ final class ApiTokens {
             var keyString = Base64.getUrlEncoder().encodeToString(key);
             var tokenString = Base64.getUrlEncoder().encodeToString(token);
 
+            var accessRole = new AccessRole(
+                UUID.randomUUID(),
+                user,
+                tokenRequest.canPublish()
+            );
+            c.insert(accessRole);
+            var roleId = Identifier.of(accessRole);
+
             var accessToken = new AccessToken(
                 UUID.randomUUID(),
                 keyString,
@@ -179,15 +190,14 @@ final class ApiTokens {
                     Instant.now().plus(tokenRequest.lifetime()),
                     ZoneOffset.ofHours(0)
                 ),
-                tokenRequest.canPublish()
+                roleId
             );
             c.insert(accessToken);
-            var tokenId = Identifier.of(accessToken);
             for (var namespace : tokenRequest.namespaces()) {
-                c.insert(new TokenNamespace(tokenId, namespace));
+                c.insert(new RoleNamespace(roleId, namespace));
             }
             for (var id : repositoryIds) {
-                c.insert(new TokenRepository(tokenId, id));
+                c.insert(new RoleRepository(roleId, id));
             }
             context.json(new AccessTokenApi(
                 tokenRequest.name(),

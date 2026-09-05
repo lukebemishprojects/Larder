@@ -1,9 +1,17 @@
 package dev.lukebemish.larder;
 
 import dev.lukebemish.larder.api.ApiError;
+import dev.lukebemish.larder.api.DeploymentState;
 import dev.lukebemish.larder.api.DeploymentStatus;
 import dev.lukebemish.larder.api.PublishingType;
+import dev.lukebemish.larder.orm.Identifier;
+import dev.lukebemish.larder.schema.BackendConfigurationType;
+import dev.lukebemish.larder.schema.Deployment;
+import dev.lukebemish.larder.schema.Repository;
+import dev.lukebemish.polymorphicsignatures.utilities.EnumUtils;
+import io.javalin.http.BadRequestResponse;
 import io.javalin.http.Context;
+import io.javalin.http.NotFoundResponse;
 import io.javalin.openapi.ContentType;
 import io.javalin.openapi.HttpMethod;
 import io.javalin.openapi.OpenApi;
@@ -14,7 +22,13 @@ import io.javalin.openapi.OpenApiRequestBody;
 import io.javalin.openapi.OpenApiResponse;
 import io.javalin.openapi.OpenApiSecurity;
 
+import java.io.IOException;
+import java.sql.SQLException;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
+
+import static dev.lukebemish.larder.Api.connection;
 
 final class ApiPortalPublish {
     @OpenApi(
@@ -47,15 +61,63 @@ final class ApiPortalPublish {
         security = @OpenApiSecurity(name = "bearer"),
         tags = {"Portal Publishing"}
     )
-    static void publisherUpload(Context context) {
-        // TODO: implement
+    static void publisherUpload(Context context) throws SQLException {
+        connection(context).transact(c -> {
+            var roleId = MachineAuthenticator.machineRole(context, c);
+
+            var repositories = c.select(new Repository.ByName(context.pathParam("repository")));
+            if (repositories.isEmpty() || !repositories.getFirst().supportsPublishPortal()) {
+                throw new NotFoundResponse();
+            }
+            var repository = repositories.getFirst();
+            Identifier<Repository> repositoryId = Identifier.of(repository);
+
+            var role = c.select(roleId);
+
+            MachineAuthenticator.validateRole(roleId, repositoryId, c);
+            MachineAuthenticator.validateRolePublish(roleId, c);
+
+            PublishingType publishingType = EnumUtils.tryValueOf(Objects.requireNonNullElse(context.queryParam("publishingType"), "USER_MANAGED"));
+            if (publishingType == null) {
+                throw new BadRequestResponse();
+            }
+
+            var bundle = context.uploadedFile("bundle");
+            if (bundle == null) {
+                throw new BadRequestResponse();
+            }
+
+            var humanName = Objects.requireNonNullElse(context.queryParam("name"), bundle.filename());
+
+            var deployment = new Deployment(
+                UUID.randomUUID(),
+                repositoryId,
+                role.owner(),
+                publishingType == PublishingType.AUTOMATIC,
+                humanName,
+                DeploymentState.PENDING,
+                Optional.empty(),
+                Optional.of(roleId)
+            );
+
+            var backend = Backend.configuredBackend(repositoryId, BackendConfigurationType.DEPLOYMENTS, c);
+
+            try (var os = backend.writePath(deployment.id() + ".zip");
+                 var is = bundle.content()) {
+                is.transferTo(os);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+
+            c.insert(deployment);
+        });
     }
 
     @OpenApi(
         path = "/portal/{repository}/api/v1/publisher/status",
         methods = HttpMethod.POST,
         description = "Check the status of an existing deployment",
-        pathParams = {@OpenApiParam(name = "repository", description = "Repository of deployment")},
+        pathParams = @OpenApiParam(name = "repository", description = "Repository of deployment"),
         queryParams = {
             @OpenApiParam(name = "id", description = "Deployment ID", type = UUID.class, required = true)
         },

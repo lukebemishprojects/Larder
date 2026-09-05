@@ -7,11 +7,16 @@ import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.Model;
 import dev.lukebemish.larder.orm.Partial;
 import dev.lukebemish.larder.orm.Representation;
+import dev.lukebemish.larder.utils.ExceptionalSupplier;
 import dev.lukebemish.polymorphicsignatures.utilities.EnumUtils;
 import org.jspecify.annotations.Nullable;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Optional;
 
 public record FilesystemBackend(
@@ -36,12 +41,39 @@ public record FilesystemBackend(
     });
 
     @Override
-    public @Nullable InputStream readPath(FilesystemBackendConfiguration config, String relativePath) {
-        throw new RuntimeException("Not Yet Implemented");
+    public @Nullable ExceptionalSupplier<InputStream, IOException> readFile(FilesystemBackendConfiguration config, String relativePath) throws IOException {
+        var targetPath = findTargetPath(config, relativePath);
+
+        if (Files.exists(targetPath)) {
+            return () -> Files.newInputStream(targetPath);
+        }
+
+        return null;
     }
 
     @Override
-    public OutputStream writePath(FilesystemBackendConfiguration config, String relativePath) {
-        throw new RuntimeException("Not Yet Implemented");
+    public OutputStream writeFile(FilesystemBackendConfiguration config, String relativePath) throws IOException {
+        var targetPath = findTargetPath(config, relativePath);
+
+        Files.createDirectories(targetPath.getParent());
+        return Files.newOutputStream(targetPath);
+    }
+
+    private Path findTargetPath(FilesystemBackendConfiguration config, String relativePath) {
+        if (location.isEmpty()) {
+            throw new IllegalStateException("Backend "+id.id()+" no longer has a location defined but attempted filesystem operations");
+        }
+
+        var locationPath = location.get().location().normalize();
+        var prefixPath = locationPath.resolve(Paths.get(config.prefix())).normalize();
+        if (!prefixPath.startsWith(locationPath)) {
+            throw new IllegalStateException("Prefix "+ config.prefix()+" traverses outside of the location path");
+        }
+        var targetPath = prefixPath.resolve(Paths.get(relativePath)).normalize();
+        if (!targetPath.startsWith(prefixPath)) {
+            throw new IllegalStateException("Relative path "+ relativePath +" traverses outside of the location+prefix path");
+        }
+
+        return targetPath;
     }
 }

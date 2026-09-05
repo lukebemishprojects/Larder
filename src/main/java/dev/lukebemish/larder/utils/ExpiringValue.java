@@ -1,5 +1,7 @@
 package dev.lukebemish.larder.utils;
 
+import org.jspecify.annotations.Nullable;
+
 import java.time.Duration;
 import java.time.Instant;
 
@@ -9,14 +11,9 @@ public class ExpiringValue<R, T extends Throwable> {
         this.lifetime = lifetime;
     }
 
-    @FunctionalInterface
-    public interface ExceptionalSupplier<R, T extends Throwable> {
-        R get() throws T;
-    }
-
     private record State<T>(T value, long expirationTime) {}
 
-    private State<R> value;
+    private @Nullable State<R> value;
     private final ExceptionalSupplier<R, T> callback;
     private final Duration lifetime;
 

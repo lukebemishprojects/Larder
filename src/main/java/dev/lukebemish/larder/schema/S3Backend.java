@@ -6,8 +6,10 @@ import dev.lukebemish.larder.orm.Identifier;
 import dev.lukebemish.larder.orm.Model;
 import dev.lukebemish.larder.orm.Partial;
 import dev.lukebemish.larder.orm.Representation;
+import dev.lukebemish.larder.utils.ExceptionalSupplier;
 import org.jspecify.annotations.Nullable;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
@@ -43,12 +45,12 @@ public record S3Backend(
     });
 
     @Override
-    public @Nullable InputStream readPath(S3BackendConfiguration config, String relativePath) {
+    public @Nullable ExceptionalSupplier<InputStream, IOException> readFile(S3BackendConfiguration config, String relativePath) {
         throw new RuntimeException("Not Yet Implemented");
     }
 
     @Override
-    public OutputStream writePath(S3BackendConfiguration config, String relativePath) {
+    public OutputStream writeFile(S3BackendConfiguration config, String relativePath) {
         throw new RuntimeException("Not Yet Implemented");
     }
 }

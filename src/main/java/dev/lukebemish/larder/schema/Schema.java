@@ -53,6 +53,14 @@ public class Schema {
                     PRIMARY KEY (id)
                 );
 
+                CREATE TABLE IF NOT EXISTS accessroles (
+                    id uuid NOT NULL,
+                    owner uuid NOT NULL,
+                    canpublish boolean NOT NULL,
+                    PRIMARY KEY (id),
+                    FOREIGN KEY (owner) REFERENCES users (id)
+                );
+
                 CREATE TABLE IF NOT EXISTS deployments (
                     id uuid NOT NULL,
                     target uuid NOT NULL,
@@ -60,12 +68,17 @@ public class Schema {
                     automatic boolean NOT NULL,
                     name varchar NOT NULL,
                     state smallint NOT NULL,
+                    tryprogressafter timestamp,
+                    responsiblerole uuid,
                     PRIMARY KEY (id),
                     FOREIGN KEY (target) REFERENCES repositories (id),
-                    FOREIGN KEY (owner) REFERENCES users (id)
+                    FOREIGN KEY (owner) REFERENCES users (id),
+                    FOREIGN KEY (responsiblerole) REFERENCES accessroles (id)
                 );
 
                 CREATE INDEX deployments_by_repository ON deployments (target);
+
+                CREATE INDEX deployments_by_responsible_role ON deployments (responsiblerole);
 
                 CREATE TABLE IF NOT EXISTS deploymentpackages (
                     deployment uuid NOT NULL,
@@ -86,35 +99,17 @@ public class Schema {
                     FOREIGN KEY (id) REFERENCES repositorybackends (id)
                 );
 
-                CREATE TABLE IF NOT EXISTS accesstokens (
-                    id uuid NOT NULL,
-                    key varchar NOT NULL,
-                    salt bytea NOT NULL,
-                    hash bytea NOT NULL,
-                    humanname varchar NOT NULL,
-                    owner uuid NOT NULL,
-                    expiry timestamp NOT NULL,
-                    canpublish boolean NOT NULL,
-                    PRIMARY KEY (id),
-                    UNIQUE (key),
-                    FOREIGN KEY (owner) REFERENCES users (id)
-                );
-
-                CREATE INDEX accesstokens_by_key ON accesstokens (key);
-
-                CREATE INDEX accesstokens_by_owner ON accesstokens (owner);
-
-                CREATE TABLE IF NOT EXISTS tokenrepositories (
-                    token uuid NOT NULL,
+                CREATE TABLE IF NOT EXISTS rolerepositories (
+                    role uuid NOT NULL,
                     repository uuid NOT NULL,
-                    PRIMARY KEY (token, repository),
-                    FOREIGN KEY (token) REFERENCES accesstokens (id),
+                    PRIMARY KEY (role, repository),
+                    FOREIGN KEY (role) REFERENCES accessroles (id),
                     FOREIGN KEY (repository) REFERENCES repositories (id)
                 );
 
-                CREATE INDEX tokenrepositories_by_repository ON tokenrepositories (repository);
+                CREATE INDEX rolerepositories_by_repository ON rolerepositories (repository);
 
-                CREATE INDEX tokenrepositories_by_token ON tokenrepositories (token);
+                CREATE INDEX rolerepositories_by_role ON rolerepositories (role);
 
                 CREATE TABLE IF NOT EXISTS repositoryindices (
                     repository uuid NOT NULL,
@@ -132,14 +127,14 @@ public class Schema {
 
                 CREATE INDEX repositoryindices_by_repository_and_path ON repositoryindices (repository, location_path);
 
-                CREATE TABLE IF NOT EXISTS tokennamespaces (
-                    token uuid NOT NULL,
+                CREATE TABLE IF NOT EXISTS rolenamespaces (
+                    role uuid NOT NULL,
                     namespace varchar NOT NULL,
-                    PRIMARY KEY (token, namespace),
-                    FOREIGN KEY (token) REFERENCES accesstokens (id)
+                    PRIMARY KEY (role, namespace),
+                    FOREIGN KEY (role) REFERENCES accessroles (id)
                 );
 
-                CREATE INDEX tokennamespaces_by_token ON tokennamespaces (token);
+                CREATE INDEX rolenamespaces_by_role ON rolenamespaces (role);
 
                 CREATE TABLE IF NOT EXISTS filesystembackendconfigurations (
                     id uuid NOT NULL,
@@ -162,6 +157,8 @@ public class Schema {
                     FOREIGN KEY (repository) REFERENCES repositories (id)
                 );
 
+                CREATE INDEX packages_by_repository ON packages (repository);
+
                 CREATE TABLE IF NOT EXISTS usernamespaces (
                     id uuid NOT NULL,
                     namespace varchar NOT NULL,
@@ -171,6 +168,25 @@ public class Schema {
                 );
 
                 CREATE INDEX usernamespaces_by_user ON usernamespaces (id);
+
+                CREATE TABLE IF NOT EXISTS accesstokens (
+                    id uuid NOT NULL,
+                    key varchar NOT NULL,
+                    salt bytea NOT NULL,
+                    hash bytea NOT NULL,
+                    humanname varchar NOT NULL,
+                    owner uuid NOT NULL,
+                    expiry timestamp NOT NULL,
+                    role uuid NOT NULL,
+                    PRIMARY KEY (id),
+                    UNIQUE (key),
+                    FOREIGN KEY (owner) REFERENCES users (id),
+                    FOREIGN KEY (role) REFERENCES accessroles (id)
+                );
+
+                CREATE INDEX accesstokens_by_key ON accesstokens (key);
+
+                CREATE INDEX accesstokens_by_owner ON accesstokens (owner);
 
                 CREATE TABLE IF NOT EXISTS s3backendconfigurations (
                     id uuid NOT NULL,

@@ -8,6 +8,7 @@ module dev.lukebemish.larder {
     // Annotations, only needed at compile time
     requires static org.jspecify;
     requires static dev.lukebemish.polymorphicsignatures;
+    requires static lombok;
 
     // Javalin openapi and docs
     requires javalin.openapi.plugin;

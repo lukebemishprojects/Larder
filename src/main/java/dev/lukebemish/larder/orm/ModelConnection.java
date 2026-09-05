@@ -11,7 +11,6 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -38,19 +37,24 @@ public class ModelConnection {
         });
     }
 
-    public synchronized <T> T transact(SQLFunction<ModelConnection, T> function) throws SQLException {
-        connection.setAutoCommit(false);
+    public synchronized <T extends @Nullable Object> T transact(SQLFunction<ModelConnection, T> function) throws SQLException {
         if (reentrantCheck) throw new IllegalStateException("Cannot re-enter a transaction");
         reentrantCheck = true;
+
         try {
-            var out = function.apply(this);
-            connection.commit();
-            return out;
-        } catch (Throwable t) {
-            connection.rollback();
-            throw t;
+            connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+            connection.setAutoCommit(false);
+            try {
+                var out = function.apply(this);
+                connection.commit();
+                return out;
+            } catch (Throwable t) {
+                connection.rollback();
+                throw t;
+            } finally {
+                connection.setAutoCommit(true);
+            }
         } finally {
-            connection.setAutoCommit(true);
             reentrantCheck = false;
         }
     }
