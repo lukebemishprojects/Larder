@@ -11,6 +11,7 @@ import io.javalin.Javalin;
 import io.javalin.config.Key;
 import io.javalin.http.ContentType;
 import io.javalin.http.Context;
+import io.javalin.http.ForbiddenResponse;
 import io.javalin.http.Header;
 import io.javalin.http.HttpResponseException;
 import io.javalin.http.HttpStatus;
@@ -113,7 +114,7 @@ public class Larder {
                 ctx.status(e.getStatus());
                 if (isHtml(ctx)) {
                     var userRoles = oidcAuthenticator.userRoles(ctx);
-                    if (userRoles.isEmpty()) {
+                    if (userRoles != null && userRoles.isEmpty()) {
                         oidcAuthenticator.fillLoginRedirect(ctx);
                         return;
                     }
@@ -158,6 +159,7 @@ public class Larder {
                 get("/login", oidcAuthenticator::handleLoginRedirect);
                 get("/logout", oidcAuthenticator::handleLogoutRequest);
                 get("/signin", oidcAuthenticator::requestLogin, Role.Builtin.USER);
+                post("/refresh", oidcAuthenticator::refresh);
 
                 path("/dashboard", List.of(Role.Builtin.USER), () -> {
                     get("logout", oidcAuthenticator::requestLogout);
@@ -298,7 +300,14 @@ public class Larder {
 
     private void authenticate(Context context) {
         var requiredRoles = context.routeRoles();
-        var userRoles = new HashSet<RouteRole>(oidcAuthenticator.userRoles(context));
+        var maybeUserRoles = oidcAuthenticator.userRoles(context);
+        if (maybeUserRoles == null) {
+            if (requiredRoles.isEmpty()) {
+                return;
+            }
+            throw new ForbiddenResponse();
+        }
+        var userRoles = new HashSet<RouteRole>(maybeUserRoles);
         if (userRoles.containsAll(requiredRoles)) {
             return; // User has all required roles to access
         }

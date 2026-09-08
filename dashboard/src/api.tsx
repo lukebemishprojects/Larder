@@ -6,9 +6,9 @@ import { OrError } from './utils';
 import { Temporal } from 'temporal-polyfill'
 
 export function nullishOptional<R, Z extends z.ZodType<R>>(schema: Z) {
-    const input = schema.nullish().optional();
+    const input = schema.nullish();
     const output = schema.optional();
-    return z.codec(
+    return z.codec<z.ZodOptional<z.ZodNullable<Z>>, z.ZodOptional<Z>>(
         input,
         output,
         {
@@ -247,7 +247,7 @@ export function validateRepository(repo: Repository, setStatus: Setter<OrError>)
     return true;
 }
 
-const reservedpaths = new Set(["api", "dashboard", "publish", "_internal", "portal", "login", "logout", "signin", "swagger", "openapi"]);
+const reservedpaths = new Set(["api", "dashboard", "publish", "_internal", "portal", "login", "logout", "signin", "refresh", "swagger", "openapi"]);
 
 function isRepositoryNameValid(repositoryname: string): boolean {
     return /^[a-z0-9._-]+$/.test(repositoryname) && !reservedpaths.has(repositoryname);

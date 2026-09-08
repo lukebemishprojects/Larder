@@ -159,15 +159,7 @@ final class ApiTokens {
             SECURE_RANDOM.nextBytes(salt);
             SECURE_RANDOM.nextBytes(token);
 
-            byte[] hash;
-            try {
-                var digest = MessageDigest.getInstance("SHA-512");
-                digest.update(salt);
-                digest.update(token);
-                hash = digest.digest();
-            } catch (NoSuchAlgorithmException e) {
-                throw new RuntimeException(e);
-            }
+            byte[] hash = hashToken(salt, token);
             var keyString = Base64.getUrlEncoder().encodeToString(key);
             var tokenString = Base64.getUrlEncoder().encodeToString(token);
 
@@ -209,5 +201,18 @@ final class ApiTokens {
                 accessToken.expiry().toInstant(ZoneOffset.ofHours(0))
             ));
         });
+    }
+
+    public static byte[] hashToken(byte[] salt, byte[] token) {
+        byte[] hash;
+        try {
+            var digest = MessageDigest.getInstance("SHA-512");
+            digest.update(salt);
+            digest.update(token);
+            hash = digest.digest();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+        return hash;
     }
 }

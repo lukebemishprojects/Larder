@@ -13,8 +13,6 @@ import io.javalin.http.NotFoundResponse;
 import io.javalin.http.UnauthorizedResponse;
 
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.Base64;
@@ -63,15 +61,7 @@ final class MachineAuthenticator {
         }
 
         var token = tokens.getFirst();
-        byte[] hash;
-        try {
-            var digest = MessageDigest.getInstance("SHA-512");
-            digest.update(token.salt());
-            digest.update(basicParts[1].getBytes(StandardCharsets.UTF_8));
-            hash = digest.digest();
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
+        var hash = ApiTokens.hashToken(token.salt(), Base64.getUrlDecoder().decode(basicParts[1]));
 
         if (!Arrays.equals(hash, token.hash())) {
             throw new UnauthorizedResponse();

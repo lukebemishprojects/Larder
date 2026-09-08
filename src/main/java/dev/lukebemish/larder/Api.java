@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
 final class Api {
     private Api() {}
 
-    static final UUID UUID_ISS = UUID.fromString("f26ee10c-dfd1-4aff-99f2-03140ad59e46");
+    static final UUID USER_ID_NAMESPACE = UUID.fromString("f26ee10c-dfd1-4aff-99f2-03140ad59e46");
 
     @OpenApi(
         path = "/dashboard/api/whoami",

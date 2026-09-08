@@ -197,7 +197,37 @@ public class Schema {
                     PRIMARY KEY (id, type_id),
                     FOREIGN KEY (id) REFERENCES repositories (id),
                     FOREIGN KEY (backend) REFERENCES repositorybackends (id)
-                );""")
+                );
+
+                CREATE TABLE IF NOT EXISTS refreshtokens (
+                    id uuid NOT NULL,
+                    owner uuid NOT NULL,
+                    key varchar NOT NULL,
+                    salt bytea NOT NULL,
+                    hash bytea NOT NULL,
+                    expiry timestamp NOT NULL,
+                    refreshtoken varchar NOT NULL,
+                    PRIMARY KEY (id),
+                    UNIQUE (key),
+                    FOREIGN KEY (owner) REFERENCES users (id)
+                );
+
+                CREATE INDEX refreshtokens_by_key ON refreshtokens (key);
+
+                CREATE INDEX refreshtokens_by_owner ON refreshtokens (owner);""" + """
+                CREATE INDEX refreshtokens_by_expiry on refreshtokens (expiry);
+
+                CREATE FUNCTION clear_refresh_tokens() RETURNS trigger AS $clear_refresh_tokens$
+                  BEGIN
+                    DELETE FROM refreshtokens WHERE expiry < CURRENT_DATE - interval '7 days';
+                    RETURN NULL;
+                  END
+                $clear_refresh_tokens$ LANGUAGE plpgsql VOLATILE;
+
+                CREATE TRIGGER expire_refresh_tokens
+                AFTER INSERT ON refreshtokens
+                FOR EACH ROW EXECUTE PROCEDURE clear_refresh_tokens();
+                """)
             .downgrade(1, """
 
                 """) // TODO: fill

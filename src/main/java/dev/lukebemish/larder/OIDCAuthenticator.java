@@ -15,12 +15,17 @@ import com.github.scribejava.core.model.Verb;
 import com.github.scribejava.core.oauth.AccessTokenRequestParams;
 import com.github.scribejava.core.oauth.OAuth20Service;
 import dev.lukebemish.larder.orm.Identifier;
+import dev.lukebemish.larder.schema.RefreshToken;
 import dev.lukebemish.larder.schema.User;
 import dev.lukebemish.larder.utils.ExpiringValue;
 import dev.lukebemish.polymorphicsignatures.utilities.EnumUtils;
 import io.javalin.http.BadRequestResponse;
 import io.javalin.http.Context;
+import io.javalin.http.Cookie;
+import io.javalin.http.ForbiddenResponse;
+import io.javalin.http.HttpStatus;
 import io.javalin.http.NotFoundResponse;
+import io.javalin.http.SameSite;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
@@ -55,6 +60,8 @@ import java.security.SecureRandom;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -67,8 +74,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static dev.lukebemish.larder.Api.connection;
 
 final class OIDCAuthenticator {
     private static final Logger logger = LoggerFactory.getLogger(OIDCAuthenticator.class);
@@ -269,78 +279,7 @@ final class OIDCAuthenticator {
                 throw new BadRequestResponse("Authentication failed");
             }
 
-            var idToken = token.getOpenIdToken();
-
-            Jws<Claims> idTokenJwt;
-            try {
-                idTokenJwt = idJwtParser.parseSignedClaims(idToken);
-            } catch (JwtException e) {
-                logger.debug("Failed to acquire JWT access token", e);
-                throw new BadRequestResponse("Authentication failed");
-            }
-
-            var sub = idTokenJwt.getPayload().getSubject();
-            var accessToken = token.getAccessToken();
-
-            var authType = token.getTokenType();
-            if (!authType.toLowerCase(Locale.ROOT).equals("bearer")) {
-                // Must be bearer auth
-                logger.warn("{}'; cannot use it to authenticate!", "OIDC provider gave non-bearer-auth access token of type '" + authType);
-                throw new BadRequestResponse("Authentication failed");
-            }
-
-            var userInfoRequest = new OAuthRequest(Verb.GET, userInfoEndpoint);
-            userInfoRequest.addHeader("Authorization", "Bearer "+accessToken);
-            userInfoRequest.addQuerystringParameter("schema", "openid");
-            var userInfo = oauth2service.execute(userInfoRequest);
-
-            var userInfoJson = Larder.JSON_MAPPER.readTree(userInfo.getBody());
-            var userInfoSub = userInfoJson.get("sub").asString();
-            if (!userInfoSub.equals(sub)) {
-                // These don't match... so we need to error
-                logger.warn("OIDC provider gave non-matching 'sub' from identity token and userinfo; cannot use it to authenticate!");
-                throw new BadRequestResponse("Authentication failed");
-            }
-            var email = userInfoJson.get("email");
-            if (email == null) {
-                logger.warn("OIDC provider failed to provide email in userinfo; cannot use it to authenticate!");
-                throw new BadRequestResponse("Authentication failed");
-            }
-
-            // Deterministically generated from the sub
-            var userUUID = Generators.nameBasedGenerator(Api.UUID_ISS).generate(sub);
-
-            // We have enough info to get / query the user now...
-            context.appData(Larder.CONNECTION_KEY).transact(c -> {
-                var user = new User(email.asString(), userUUID);
-                var userId = Identifier.of(user);
-                var existing = c.find(userId);
-                if (existing.isPresent()) {
-                    if (!existing.get().equals(user)) {
-                        c.update(user);
-                    }
-                } else {
-                    c.insert(user);
-                }
-            });
-
-            // Finally, make the session JWT token and add as a cookie
-            // This requires knowing roles
-
-            var idTokenClaimsJson = Larder.JSON_MAPPER.valueToTree(idTokenJwt.getPayload());
-            var infoForTest = Larder.JSON_MAPPER.createObjectNode();
-            infoForTest.set("token", idTokenClaimsJson);
-            infoForTest.set("userinfo", userInfoJson);
-            boolean isAdmin;
-            try {
-                isAdmin = adminRoleExpression.evaluate(infoForTest).asBoolean();
-            } catch (EvaluateException | JsonNodeException | NullPointerException e) {
-                logger.warn("Could not evaluate role rule for 'admin': ", e);
-                throw new BadRequestResponse("Authentication failed");
-            }
-
-            var userJwt = userJwt(idToken, userUUID, isAdmin ? Set.of(Role.Builtin.ADMIN, Role.Builtin.USER) : Set.of(Role.Builtin.USER));
-            context.cookie(SESSION_TOKEN_COOKIE, userJwt);
+            setupSessionFromOIDC(context, token);
 
             context.redirect(destination);
         } catch (IOException | SQLException | InterruptedException | ExecutionException e) {
@@ -348,7 +287,175 @@ final class OIDCAuthenticator {
         }
     }
 
-    public void requestLogout(Context context) {
+    private void setupSessionFromOIDC(Context context, OpenIdOAuth2AccessToken token) throws InterruptedException, ExecutionException, IOException, SQLException {
+        var idToken = token.getOpenIdToken();
+
+        Jws<Claims> idTokenJwt;
+        try {
+            idTokenJwt = idJwtParser.parseSignedClaims(idToken);
+        } catch (JwtException e) {
+            logger.debug("Failed to acquire JWT access token", e);
+            throw new BadRequestResponse("Authentication failed");
+        }
+
+        var sub = idTokenJwt.getPayload().getSubject();
+        var accessToken = token.getAccessToken();
+
+        var authType = token.getTokenType();
+        if (!authType.toLowerCase(Locale.ROOT).equals("bearer")) {
+            // Must be bearer auth
+            logger.warn("{}'; cannot use it to authenticate!", "OIDC provider gave non-bearer-auth access token of type '" + authType);
+            throw new BadRequestResponse("Authentication failed");
+        }
+
+        var userInfoRequest = new OAuthRequest(Verb.GET, userInfoEndpoint);
+        userInfoRequest.addHeader("Authorization", "Bearer "+accessToken);
+        userInfoRequest.addQuerystringParameter("schema", "openid");
+        var userInfo = oauth2service.execute(userInfoRequest);
+
+        var userInfoJson = Larder.JSON_MAPPER.readTree(userInfo.getBody());
+        var userInfoSub = userInfoJson.get("sub").asString();
+        if (!userInfoSub.equals(sub)) {
+            // These don't match... so we need to error
+            logger.warn("OIDC provider gave non-matching 'sub' from identity token and userinfo; cannot use it to authenticate!");
+            throw new BadRequestResponse("Authentication failed");
+        }
+        var email = userInfoJson.get("email");
+        if (email == null) {
+            logger.warn("OIDC provider failed to provide email in userinfo; cannot use it to authenticate!");
+            throw new BadRequestResponse("Authentication failed");
+        }
+
+        // Deterministically generated from the sub
+        var userUUID = Generators.nameBasedGenerator(Api.USER_ID_NAMESPACE).generate(sub);
+
+        var expiresBefore = Instant.now().plus(10, ChronoUnit.MINUTES).getEpochSecond();
+
+        // refresh token
+        var key = new byte[24];
+        var salt = new byte[12];
+        var refreshToken = new byte[96];
+        secureRandom.nextBytes(key);
+        secureRandom.nextBytes(salt);
+        secureRandom.nextBytes(refreshToken);
+
+        byte[] refreshTokenHash = ApiTokens.hashToken(salt, refreshToken);
+        var refreshTokenKey = Base64.getUrlEncoder().encodeToString(key);
+        var refreshTokenString = Base64.getUrlEncoder().encodeToString(refreshToken);
+        var refreshTokenFull = Base64.getEncoder().encodeToString((refreshTokenKey + ":" + refreshTokenString).getBytes(StandardCharsets.UTF_8));
+
+        // We have enough info to get / query the user now...
+        connection(context).transact(c -> {
+            var user = new User(email.asString(), userUUID);
+            var userId = Identifier.of(user);
+            var existing = c.find(userId);
+            if (existing.isPresent()) {
+                if (!existing.get().equals(user)) {
+                    c.update(user);
+                }
+            } else {
+                c.insert(user);
+            }
+
+            var refreshTokenApi = new RefreshToken(
+                UUID.randomUUID(),
+                Identifier.of(user),
+                refreshTokenKey,
+                salt,
+                refreshTokenHash,
+                LocalDateTime.ofInstant(
+                    Instant.now().plus(7, ChronoUnit.DAYS),
+                    ZoneOffset.ofHours(0)
+                ),
+                token.getRefreshToken()
+            );
+            c.insert(refreshTokenApi);
+        });
+
+        // Finally, make the session JWT token and add as a cookie
+        // This requires knowing roles
+
+        var idTokenClaimsJson = Larder.JSON_MAPPER.valueToTree(idTokenJwt.getPayload());
+        var infoForTest = Larder.JSON_MAPPER.createObjectNode();
+        infoForTest.set("token", idTokenClaimsJson);
+        infoForTest.set("userinfo", userInfoJson);
+        boolean isAdmin;
+        try {
+            isAdmin = adminRoleExpression.evaluate(infoForTest).asBoolean();
+        } catch (EvaluateException | JsonNodeException | NullPointerException e) {
+            logger.warn("Could not evaluate role rule for 'admin': ", e);
+            throw new BadRequestResponse("Authentication failed");
+        }
+
+        var userJwt = userJwt(idToken, userUUID, isAdmin ? Set.of(Role.Builtin.ADMIN, Role.Builtin.USER) : Set.of(Role.Builtin.USER));
+        context.cookie(new Cookie(
+            SESSION_TOKEN_COOKIE, userJwt,
+            "/", -1, true, true,
+            null, SameSite.STRICT
+        ));
+        context.cookie(new Cookie(
+            SESSION_TOKEN_EXPIRY_COOKIE, Long.toString(expiresBefore),
+            SESSION_TOKEN_EXPIRY_PATH, -1, false, false,
+            null, SameSite.STRICT
+        ));
+        context.cookie(new Cookie(
+            REFRESH_TOKEN_COOKIE, refreshTokenFull,
+            REFRESH_TOKEN_PATH, -1, true, true,
+            null, SameSite.STRICT
+        ));
+    }
+
+    public void refresh(Context context) throws SQLException {
+        @SuppressWarnings("NullableProblems") AtomicReference<RefreshToken> token = new AtomicReference<>();
+        connection(context).transact(c -> {
+            var refreshToken = context.cookie(REFRESH_TOKEN_COOKIE);
+            if (refreshToken == null) {
+                throw new ForbiddenResponse();
+            }
+            var parts = new String(Base64.getDecoder().decode(refreshToken), StandardCharsets.UTF_8).split(":");
+            if (parts.length != 2) {
+                throw new ForbiddenResponse();
+            }
+            var key = parts[0];
+            var tokens = c.select(new RefreshToken.ByKey(key));
+            if (tokens.isEmpty()) {
+                throw new ForbiddenResponse();
+            }
+            token.set(tokens.getFirst());
+
+            var expiration = token.get().expiry().toInstant(ZoneOffset.ofHours(0));
+            if (expiration.isBefore(Instant.now())) {
+                throw new ForbiddenResponse();
+            }
+
+            var hash = ApiTokens.hashToken(token.get().salt(), Base64.getUrlDecoder().decode(parts[1]));
+
+            if (!Arrays.equals(hash, token.get().hash())) {
+                throw new ForbiddenResponse();
+            }
+
+            c.delete(token.get());
+        });
+
+
+        try {
+            OpenIdOAuth2AccessToken oidcToken;
+            try {
+                oidcToken = (OpenIdOAuth2AccessToken) oauth2service.refreshAccessToken(token.get().refreshToken());
+            } catch (OAuth2AccessTokenErrorResponse e) {
+                logger.debug("Failed to acquire access token", e);
+                throw new BadRequestResponse("Authentication failed");
+            }
+
+            setupSessionFromOIDC(context, oidcToken);
+        } catch (IOException | InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
+
+        context.status(HttpStatus.NO_CONTENT);
+    }
+
+    public void requestLogout(Context context) throws SQLException {
         var sessionJwt = context.cookie(SESSION_TOKEN_COOKIE);
         var idToken = sessionJwt == null ? null : recoverIdToken(sessionJwt);
         var targetUrl = String.format("%s/logout", host);
@@ -367,6 +474,15 @@ final class OIDCAuthenticator {
 
         if (sessionJwt != null) {
             context.removeCookie(SESSION_TOKEN_COOKIE);
+            context.removeCookie(SESSION_TOKEN_EXPIRY_COOKIE);
+            context.removeCookie(REFRESH_TOKEN_COOKIE);
+
+            Larder.AuthInfo identity = context.attribute(Larder.AUTH_INFO_KEY);
+            if (identity != null && identity.user() != null) {
+                connection(context).transact(c -> {
+                    c.delete(new RefreshToken.ByOwner(identity.user()));
+                });
+            }
         }
 
         if (idToken == null) {
@@ -410,7 +526,7 @@ final class OIDCAuthenticator {
 
     private static final String JWT_HEADER = Base64.getUrlEncoder().encodeToString("{\"typ\":\"JWT\",\"alg\":\"HS256\"}".getBytes(StandardCharsets.UTF_8));
 
-    private String userJwt(String idToken, UUID userId, Set<? extends Role> roles) {
+    private String userJwt(String idToken, UUID userId, Set<? extends Role.Builtin> roles) {
         ObjectNode node = Larder.JSON_MAPPER.createObjectNode();
         node.put("user", userId.toString());
 
@@ -448,14 +564,25 @@ final class OIDCAuthenticator {
     }
 
     private static final String SESSION_TOKEN_COOKIE = "session_token";
+    private static final String SESSION_TOKEN_EXPIRY_COOKIE = "session_token_expiry";
+    private static final String SESSION_TOKEN_EXPIRY_PATH = "/refresh/does-not-exist";
+    private static final String REFRESH_TOKEN_COOKIE = "refresh_token";
+    private static final String REFRESH_TOKEN_PATH = "/refresh";
 
-    public Set<? extends Role> userRoles(Context context) {
+    public @Nullable Set<? extends Role> userRoles(Context context) {
         if (context.attribute(Larder.AUTH_INFO_KEY) instanceof Larder.AuthInfo authInfo) {
             return authInfo.roles();
         }
         var sessionJwt = context.cookie(SESSION_TOKEN_COOKIE);
         if (sessionJwt != null) {
-            var info = parseUserJwt(context, sessionJwt);
+            var allowsCrossSite = context.path().equals("/signin");
+
+            var secFetchSite = context.header("Sec-Fetch-Site");
+            if (!allowsCrossSite && !"same-origin".equals(secFetchSite) && !"same-site".equals(secFetchSite) && !"none".equals(secFetchSite)) {
+                return null;
+            }
+
+            var info = parseUserJwt(sessionJwt);
             if (info != null) {
                 context.attribute(Larder.AUTH_INFO_KEY, info);
                 return info.roles();
@@ -519,20 +646,13 @@ final class OIDCAuthenticator {
         return bodyJson.get("id").asString();
     }
 
-    private Larder.@Nullable AuthInfo parseUserJwt(Context context, String sessionJwt) {
+    private Larder.@Nullable AuthInfo parseUserJwt(String sessionJwt) {
         var bodyJson = validateJwt(sessionJwt);
         if (bodyJson == null) {
             return null;
         }
         var userUUID = UUID.fromString(bodyJson.get("user").asString());
         var roles = bodyJson.get("roles").valueStream().map(JsonNode::asString).<Role.Builtin>map(roleText -> EnumUtils.tryValueOf(roleText.toUpperCase(Locale.ROOT))).filter(Objects::nonNull).collect(Collectors.toSet());
-        var expiration = Instant.ofEpochSecond(bodyJson.get("exp").asLong());
-        var now = Instant.now();
-        if (expiration.isAfter(now.plus(5, ChronoUnit.MINUTES))) {
-            // Token can be refreshed
-            var newToken = userJwt(bodyJson.get("id").asString(), userUUID, roles);
-            context.cookie(SESSION_TOKEN_COOKIE, newToken);
-        }
         var userId = Identifier.of(User.REPRESENTATION, userUUID);
         return new Larder.AuthInfo(userId, roles);
     }
