@@ -18,7 +18,16 @@ export function nullishOptional<R, Z extends z.ZodType<R>>(schema: Z) {
     )
 }
 
-export async function ensureApiLogin() {
+function lockify<R, F extends (...args: any) => Promise<R>>(f: F): (...args: Parameters<F>) => Promise<R> {
+    let lock: Promise<void | R> = Promise.resolve()
+    return (...params: Parameters<F>) => {
+        const result = lock.then(() => f(...params))
+        lock = result.catch(() => {})
+        return result
+    }
+}
+
+async function _ensureApiLogin() {
     const now = Math.floor(Date.now() / 1000);
     const storedTime = (await cookieStore.get("session_token_expiry"))?.value;
     const storedTimeNum = storedTime === undefined ? now+1 : parseInt(storedTime);
@@ -37,6 +46,8 @@ export async function ensureApiLogin() {
     }
     return currentVal.value!
 }
+
+export const ensureApiLogin: () => Promise<string> = lockify(_ensureApiLogin);
 
 export async function fetchJSON<S extends z.ZodType>(url: string, schema: S): Promise<z.infer<S>> {
     const csrfToken = await ensureApiLogin();
