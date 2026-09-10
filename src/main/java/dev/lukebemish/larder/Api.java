@@ -12,8 +12,8 @@ import dev.lukebemish.larder.schema.BackendConfigurationType;
 import dev.lukebemish.larder.schema.Deployment;
 import dev.lukebemish.larder.schema.FilesystemBackendConfiguration;
 import dev.lukebemish.larder.schema.Repository;
-import dev.lukebemish.larder.schema.S3BackendConfiguration;
 import dev.lukebemish.larder.schema.RoleRepository;
+import dev.lukebemish.larder.schema.S3BackendConfiguration;
 import dev.lukebemish.larder.schema.User;
 import dev.lukebemish.larder.schema.UserNamespace;
 import io.javalin.http.BadRequestResponse;
@@ -42,7 +42,7 @@ final class Api {
     static final UUID USER_ID_NAMESPACE = UUID.fromString("f26ee10c-dfd1-4aff-99f2-03140ad59e46");
 
     @OpenApi(
-        path = "/dashboard/api/whoami",
+        path = "/auth/whoami",
         methods = HttpMethod.GET,
         summary = "Get the querying user",
         responses = {
@@ -77,7 +77,7 @@ final class Api {
     }
 
     @OpenApi(
-        path = "/dashboard/api/whatcanido",
+        path = "/auth/whatcanido",
         methods = HttpMethod.GET,
         summary = "Find the capabilities available to the current user",
         responses = {
@@ -91,8 +91,8 @@ final class Api {
         tags = {"Dashboard"}
     )
     public static void whatCanIDo(Context ctx) {
-        Larder.AuthInfo identity = ctx.attribute(Larder.AUTH_INFO_KEY);
-        ctx.json(Objects.requireNonNull(identity).roles().stream()
+        var roles = authenticatedRoles(ctx);
+        ctx.json(roles.stream()
             .map(role -> switch (role) {
                 case Role.Builtin builtin -> switch (builtin) {
                     case ADMIN -> UserCapability.ADMIN_DASHBOARD;

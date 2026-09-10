@@ -9,4 +9,4 @@ oauth:
     client_secret: cYKjUGzbO4-cdCbme02Gksq934zldTym41ozzrnVjY0
     description: ''
     redirect_uris:
-    - http://localhost:8786/login
+    - http://localhost:8786/auth/login

@@ -36,10 +36,10 @@ export const AppContext = createContext<AppContext>();
 export function App(props: { entries: AppEntry[] }) {
     const [ page, setPage ] = createSignal(0);
     const [identity] = createResource(async () => {
-        return await api.fetchJSON('/dashboard/api/whoami', api.User);
+        return await api.fetchJSON('/auth/whoami', api.User);
     })
     const [capabilities] = createResource(async () => {
-        return await api.fetchJSON('/dashboard/api/whatcanido', api.UserCapabilities);
+        return await api.fetchJSON('/auth/whatcanido', api.UserCapabilities);
     })
 
     const [modalDialogContents, setModalDialogContents] = createSignal<ValidComponent | undefined>();

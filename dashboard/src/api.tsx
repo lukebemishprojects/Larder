@@ -32,19 +32,13 @@ async function _ensureApiLogin() {
     const storedTime = (await cookieStore.get("session_token_expiry"))?.value;
     const storedTimeNum = storedTime === undefined ? now+1 : parseInt(storedTime);
     if (now > storedTimeNum) {
-        const res = await fetch("/refresh", {
+        const res = await fetch("/auth/refresh", {
             method: 'POST',
         });
         if (!res.ok) throw new Error(`Status ${res.status}, ${res.statusText}`)
     }
 
-    const currentVal = await cookieStore.get("csrf_token");
-    if (!currentVal) {
-        const uuid = crypto.randomUUID();
-        await cookieStore.set("csrf_token", uuid)
-        return uuid;
-    }
-    return currentVal.value!
+    return (document.querySelector('meta[itemprop="csrf-token"]')! as HTMLMetaElement).content
 }
 
 export const ensureApiLogin: () => Promise<string> = lockify(_ensureApiLogin);
@@ -295,7 +289,7 @@ export function validateRepository(repo: Repository, setStatus: Setter<OrError>)
     return true;
 }
 
-const reservedpaths = new Set(["api", "dashboard", "publish", "_internal", "portal", "login", "logout", "signin", "refresh", "swagger", "openapi"]);
+const reservedpaths = new Set(["api", "dashboard", "publish", "_internal", "portal", "auth", "swagger", "openapi"]);
 
 function isRepositoryNameValid(repositoryname: string): boolean {
     return /^[a-z0-9._-]+$/.test(repositoryname) && !reservedpaths.has(repositoryname);

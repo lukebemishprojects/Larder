@@ -25,6 +25,7 @@ import io.javalin.openapi.plugin.OpenApiPlugin;
 import io.javalin.openapi.plugin.swagger.SwaggerPlugin;
 import io.javalin.security.RouteRole;
 import io.pebbletemplates.pebble.PebbleEngine;
+import io.pebbletemplates.pebble.loader.DelegatingLoader;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -156,12 +157,15 @@ public class Larder {
             // API methods
             config.routes.apiBuilder(() -> {
                 // Redirected here after OIDC login
-                get("/login", oidcAuthenticator::handleLoginRedirect);
-                get("/logout", oidcAuthenticator::handleLogoutRequest);
-                get("/signin", oidcAuthenticator::requestLogin, Role.Builtin.USER);
-                post("/refresh", oidcAuthenticator::refresh);
+                get("/auth/login", oidcAuthenticator::handleLoginRedirect);
+                get("/auth/logout", oidcAuthenticator::handleLogoutRequest);
+                get("/auth/signin", oidcAuthenticator::requestLogin, Role.Builtin.USER);
+                post("/auth/refresh", oidcAuthenticator::refresh);
+                get("/auth/whatcanido", Api::whatCanIDo);
+                get("/auth/whoami", Api::whoAmI);
 
                 path("/dashboard", List.of(Role.Builtin.USER), () -> {
+                    get(oidcAuthenticator::dashboardWithToken);
                     get("logout", oidcAuthenticator::requestLogout);
 
                     path("admin", List.of(Role.Builtin.ADMIN), () -> {
@@ -186,8 +190,6 @@ public class Larder {
                         });
                     });
                     path("api", Set.of(Role.Builtin.SAME_ORIGIN, Role.Builtin.SSA_CSRF_CHECKED), () -> {
-                        get("whoami", Api::whoAmI);
-                        get("whatcanido", Api::whatCanIDo);
                         get("namespaces/{user}/list", Api::listNamespaces);
 
                         post("namespaces/{user}/request/{namespace}", Api::requestNamespace);
@@ -359,8 +361,13 @@ public class Larder {
 
         var templateLoader = new ModuleLoader(Larder.class);
         templateLoader.setPrefix("/dev/lukebemish/larder/indices");
+
+        var dashboardLoader = new ModuleLoader(Larder.class);
+        dashboardLoader.setPrefix("/dev/lukebemish/larder");
+        dashboardLoader.setPredicate(str -> "dashboard/index.html".equals(str));
+
         PebbleEngine templateEngine = new PebbleEngine.Builder()
-            .loader(templateLoader)
+            .loader(new DelegatingLoader(List.of(templateLoader, dashboardLoader)))
             .build();
 
         try {

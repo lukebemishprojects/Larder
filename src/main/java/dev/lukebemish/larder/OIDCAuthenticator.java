@@ -79,6 +79,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static dev.lukebemish.larder.Api.authenticatedUser;
 import static dev.lukebemish.larder.Api.connection;
 
 final class OIDCAuthenticator {
@@ -149,7 +150,7 @@ final class OIDCAuthenticator {
                 this.endSessionEndpoint = configTree.get("end_session_endpoint").asString();
                 this.oidcProviderApi = new OIDCProviderApi(tokenEndpoint, authorization);
 
-                this.redirectUrl = String.format("%s/login", host);
+                this.redirectUrl = String.format("%s/auth/login", host);
 
                 var jwksUri = new URI(configTree.get("jwks_uri").asString()).toURL();
                 var jwkSet = new ExpiringValue<>(() -> {
@@ -397,13 +398,48 @@ final class OIDCAuthenticator {
         context.cookie(new Cookie(
             SESSION_TOKEN_EXPIRY_COOKIE, Long.toString(expiresBefore),
             "/", -1, false, false,
-            null, SameSite.STRICT
+            null, null
         ));
         context.cookie(new Cookie(
             REFRESH_TOKEN_COOKIE, refreshTokenFull,
             REFRESH_TOKEN_PATH, -1, true, true,
             null, SameSite.STRICT
         ));
+    }
+
+    public void dashboardWithToken(Context context) {
+        var template = context.appData(Larder.TEMPLATE_ENGINE_KEY).getTemplate("dashboard/index.html");
+        var writer = new StringWriter();
+        var secFetchMode = context.header("Sec-Fetch-Mode");
+        var secFetchDest = context.header("Sec-Fetch-Dest");
+        var shouldAcquireToken = "navigate".equals(secFetchMode) && "document".equals(secFetchDest);
+
+        var tokenValue = "No CSRF Token. This dashboard is not functional!";
+        if (shouldAcquireToken) {
+            try {
+                var hmac = Mac.getInstance("HmacSHA256");
+                hmac.init(this.hmacKey);
+                var userUuid = authenticatedUser(context).id();
+                tokenValue = Base64.getUrlEncoder().encodeToString(hmac.doFinal(userUuid.toString().getBytes(StandardCharsets.UTF_8)));
+            } catch (InvalidKeyException | NoSuchAlgorithmException e) {
+                throw new RuntimeException(e);
+            }
+
+            context.cookie(new Cookie(
+                CSRF_TOKEN, tokenValue,
+                "/", -1, true, true,
+                null, SameSite.STRICT
+            ));
+        }
+
+        try {
+            template.evaluate(writer, Map.of(
+                "token", tokenValue
+            ), Locale.ROOT);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        context.html(writer.toString());
     }
 
     public void refresh(Context context) throws SQLException {
@@ -459,7 +495,7 @@ final class OIDCAuthenticator {
     public void requestLogout(Context context) throws SQLException {
         var sessionJwt = context.cookie(SESSION_TOKEN_COOKIE);
         var idToken = sessionJwt == null ? null : recoverIdToken(sessionJwt);
-        var targetUrl = String.format("%s/logout", host);
+        var targetUrl = String.format("%s/auth/logout", host);
 
         var resultingUrl = String.format("%s/", host);
 
@@ -474,9 +510,21 @@ final class OIDCAuthenticator {
         }
 
         if (sessionJwt != null) {
-            context.removeCookie(SESSION_TOKEN_COOKIE);
-            context.removeCookie(SESSION_TOKEN_EXPIRY_COOKIE);
-            context.removeCookie(REFRESH_TOKEN_COOKIE);
+            context.cookie(new Cookie(
+                SESSION_TOKEN_COOKIE, "",
+                "/", -1, true, true,
+                null, SameSite.LAX
+            ));
+            context.cookie(new Cookie(
+                SESSION_TOKEN_EXPIRY_COOKIE, "",
+                "/", -1, false, false,
+                null, null
+            ));
+            context.cookie(new Cookie(
+                REFRESH_TOKEN_COOKIE, "",
+                REFRESH_TOKEN_PATH, -1, true, true,
+                null, SameSite.STRICT
+            ));
 
             Larder.AuthInfo identity = context.attribute(Larder.AUTH_INFO_KEY);
             if (identity != null && identity.user() != null) {
@@ -564,10 +612,11 @@ final class OIDCAuthenticator {
         }
     }
 
-    private static final String SESSION_TOKEN_COOKIE = "session_token";
+    private static final String SESSION_TOKEN_COOKIE = "__Host-Http-session_token";
+    private static final String CSRF_TOKEN = "__Host-Http-csrf_token";
     private static final String SESSION_TOKEN_EXPIRY_COOKIE = "session_token_expiry";
-    private static final String REFRESH_TOKEN_COOKIE = "refresh_token";
-    private static final String REFRESH_TOKEN_PATH = "/refresh";
+    private static final String REFRESH_TOKEN_COOKIE = "__Http-refresh_token";
+    private static final String REFRESH_TOKEN_PATH = "/auth/refresh";
 
     public Set<? extends Role> userRoles(Context context) {
         if (context.attribute(Larder.AUTH_INFO_KEY) instanceof Larder.AuthInfo authInfo) {
@@ -575,23 +624,34 @@ final class OIDCAuthenticator {
         }
         var sessionJwt = context.cookie(SESSION_TOKEN_COOKIE);
         if (sessionJwt != null) {
-            var secFetchSite = context.header("Sec-Fetch-Site");
-            var sameOrigin = "same-origin".equals(secFetchSite);
-
-            var csrfTokenCookie = context.cookie("csrf_token");
-            var csrfTokenHeader = context.header("X-CSRF-Token");
-            var ssaCsrfChecked = csrfTokenCookie != null && csrfTokenCookie.equals(csrfTokenHeader);
-
             var info = parseUserJwt(sessionJwt);
+
             if (info != null) {
                 context.attribute(Larder.AUTH_INFO_KEY, info);
                 var roles = new HashSet<Role>(info.roles());
+
+                var secFetchSite = context.header("Sec-Fetch-Site");
+                var sameOrigin = "same-origin".equals(secFetchSite);
+
+                var csrfTokenCookie = context.cookie(CSRF_TOKEN);
+                var csrfTokenHeader = context.header("X-CSRF-Token");
+
+                String expectedCsrfTokenCookie;
+                try {
+                    var hmac = Mac.getInstance("HmacSHA256");
+                    hmac.init(this.hmacKey);
+                    var userUuid = info.user().id();
+                    expectedCsrfTokenCookie = Base64.getUrlEncoder().encodeToString(hmac.doFinal(userUuid.toString().getBytes(StandardCharsets.UTF_8)));
+                } catch (InvalidKeyException | NoSuchAlgorithmException e) {
+                    throw new RuntimeException(e);
+                }
+
+                var ssaCsrfChecked = csrfTokenCookie != null && csrfTokenCookie.equals(csrfTokenHeader) && csrfTokenCookie.equals(expectedCsrfTokenCookie);
+
                 if (sameOrigin) {
                     roles.add(Role.Builtin.SAME_ORIGIN);
                 }
                 if (ssaCsrfChecked) {
-                    // TODO: figure out a better approach, to enforce _explicitly_ the /dashboard path calling this
-                    //  (this should not be relevant now, but will matter when I start serving javadoc)
                     roles.add(Role.Builtin.SSA_CSRF_CHECKED);
                 }
                 return Set.copyOf(roles);

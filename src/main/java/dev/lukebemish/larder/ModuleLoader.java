@@ -8,10 +8,12 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.UnsupportedEncodingException;
+import java.util.function.Predicate;
 
 public class ModuleLoader implements Loader<String> {
     private @Nullable String prefix;
     private @Nullable String suffix;
+    private @Nullable Predicate<String> predicate;
     private String charset = "UTF-8";
     private final Class<?> context;
 
@@ -20,11 +22,14 @@ public class ModuleLoader implements Loader<String> {
     }
 
     @Override
-    public Reader getReader(String cacheKey) {
+    public @Nullable Reader getReader(String cacheKey) {
+        if (predicate != null && !predicate.test(cacheKey)) {
+            return null;
+        }
         var location = locate(cacheKey);
         var is = context.getResourceAsStream(location);
         if (is == null) {
-            throw new IllegalStateException("Resource not found: " + location);
+            return null;
         }
         try {
             return new BufferedReader(new InputStreamReader(is, this.charset));
@@ -48,6 +53,10 @@ public class ModuleLoader implements Loader<String> {
         this.suffix = suffix;
     }
 
+    public void setPredicate(Predicate<String> predicate) {
+        this.predicate = predicate;
+    }
+
     @Override
     public @Nullable String resolveRelativePath(@Nullable String relativePath, String anchorPath) {
         return PathUtils.resolveRelativePath(relativePath, anchorPath, '/');
@@ -60,6 +69,9 @@ public class ModuleLoader implements Loader<String> {
 
     @Override
     public boolean resourceExists(String templateName) {
+        if (predicate != null && !predicate.test(templateName)) {
+            return false;
+        }
         return this.context.getResource(locate(templateName)) != null;
     }
 

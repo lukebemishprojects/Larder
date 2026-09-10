@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
 import static dev.lukebemish.larder.Api.connection;
 
 class ApiRepositories {
-    private static final Set<String> RESERVED_NAMES = Set.of("api", "dashboard", "publish", "_internal", "portal", "login", "logout", "signin", "refresh", "swagger", "openapi");
+    private static final Set<String> RESERVED_NAMES = Set.of("api", "dashboard", "publish", "_internal", "portal", "auth", "swagger", "openapi");
     private static final Pattern VALID_REPOSITORY_NAME = Pattern.compile("^[a-z0-9._-]+$");
 
     @OpenApi(
