@@ -60,6 +60,6 @@ class LarderWorld implements World {
 
     @Override
     public SequencedSet<Representation<? extends Model.Dependent<?>>> dependents(Representation<? extends Model.Object> object) {
-        return Collections.unmodifiableSequencedSet(representationDependents.get(Representation.representedType(object)));
+        return Collections.unmodifiableSequencedSet(representationDependents.getOrDefault(Representation.representedType(object), new LinkedHashSet<>()));
     }
 }

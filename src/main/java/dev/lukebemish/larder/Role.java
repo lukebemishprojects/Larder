@@ -9,7 +9,9 @@ public sealed interface Role extends RouteRole {
 
     enum Builtin implements Role {
         ADMIN,
-        USER;
+        USER,
+        SAME_ORIGIN,
+        SSA_CSRF_CHECKED;
 
         @Override
         public String unique() {

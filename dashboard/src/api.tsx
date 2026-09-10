@@ -18,8 +18,33 @@ export function nullishOptional<R, Z extends z.ZodType<R>>(schema: Z) {
     )
 }
 
+export async function ensureApiLogin() {
+    const now = Math.floor(Date.now() / 1000);
+    const storedTime = (await cookieStore.get("session_token_expiry"))?.value;
+    const storedTimeNum = storedTime === undefined ? now+1 : parseInt(storedTime);
+    if (now > storedTimeNum) {
+        const res = await fetch("/refresh", {
+            method: 'POST',
+        });
+        if (!res.ok) throw new Error(`Status ${res.status}, ${res.statusText}`)
+    }
+
+    const currentVal = await cookieStore.get("csrf_token");
+    if (!currentVal) {
+        const uuid = crypto.randomUUID();
+        await cookieStore.set("csrf_token", uuid)
+        return uuid;
+    }
+    return currentVal.value!
+}
+
 export async function fetchJSON<S extends z.ZodType>(url: string, schema: S): Promise<z.infer<S>> {
-    const response = await fetch(url).then((response) => {
+    const csrfToken = await ensureApiLogin();
+    const response = await fetch(url, {
+        headers: {
+            'X-CSRF-Token': csrfToken
+        }
+    }).then((response) => {
         if (!response.ok) {
             throw new Error(`Status ${response.status}, ${response.statusText}`);
         }
@@ -29,10 +54,12 @@ export async function fetchJSON<S extends z.ZodType>(url: string, schema: S): Pr
 }
 
 export async function postAndListenJSON<S extends z.ZodObject, R extends z.ZodObject>(url: string, body: z.infer<S>, schema: S, outschema: R): Promise<z.infer<R>> {
+    const csrfToken = await ensureApiLogin();
     const response = await fetch(url, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken
         },
         body: JSON.stringify(schema.encode(body))
     });
@@ -43,8 +70,12 @@ export async function postAndListenJSON<S extends z.ZodObject, R extends z.ZodOb
 }
 
 export async function postURL(url: string): Promise<void> {
+    const csrfToken = await ensureApiLogin();
     const response = await fetch(url, {
         method: 'POST',
+        headers: {
+            'X-CSRF-Token': csrfToken
+        }
     });
     if (!response.ok) {
         throw new Error(`Status ${response.status}, ${response.statusText}`);
@@ -52,8 +83,12 @@ export async function postURL(url: string): Promise<void> {
 }
 
 export async function deleteURL(url: string): Promise<void> {
+    const csrfToken = await ensureApiLogin();
     const response = await fetch(url, {
         method: 'DELETE',
+        headers: {
+            'X-CSRF-Token': csrfToken
+        }
     });
     if (!response.ok) {
         throw new Error(`Status ${response.status}, ${response.statusText}`);
@@ -61,10 +96,12 @@ export async function deleteURL(url: string): Promise<void> {
 }
 
 export async function postJSON<S extends z.ZodObject>(url: string, body: z.infer<S>, schema: S): Promise<void> {
+    const csrfToken = await ensureApiLogin();
     const response = await fetch(url, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken
         },
         body: JSON.stringify(schema.encode(body))
     });

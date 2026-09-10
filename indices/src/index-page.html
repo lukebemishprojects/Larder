@@ -43,13 +43,43 @@
     </div>
   </div>
   <script language="javascript">
-      fetch("/dashboard/api/whatcanido").then((response) => {if (response.status === 401) {
-          document.getElementById("sign-in").style.display = "inline-block";
-          document.getElementById("sign-in").href = "/signin?target="+window.btoa(window.location.pathname)
-      } else {
-          document.getElementById("show-dashboard").style.display = "inline-block";
-          document.getElementById("sign-out").style.display = "inline-block";
-      }});
+      const now = Math.floor(Date.now() / 1000);
+      cookieStore.get("session_token_expiry").then(cookie => {
+          const storedTime = cookie?.value
+          const storedTimeNum = storedTime === undefined ? now+1 : parseInt(storedTime);
+          const rest = (uuid) => {
+              const action = () => fetch("/dashboard/api/whatcanido", {
+                  headers: {
+                      'X-CSRF-Token': uuid
+                  }
+              }).then((response) => {
+                  if (response.status === 401) {
+                      document.getElementById("sign-in").style.display = "inline-block";
+                      document.getElementById("sign-in").href = "/signin?target=" + window.btoa(window.location.pathname)
+                  } else {
+                      document.getElementById("show-dashboard").style.display = "inline-block";
+                      document.getElementById("sign-out").style.display = "inline-block";
+                  }
+              });
+              if (now > storedTimeNum) {
+                  fetch("/refresh", {
+                      method: 'POST'
+                  }).then(action);
+              } else {
+                  action();
+              }
+          };
+          cookieStore.get("csrf_token").then((currentVal) => {
+              if (!currentVal) {
+                  const uuid = crypto.randomUUID();
+                  cookieStore.set("csrf_token", uuid).then(() => {
+                      rest(uuid);
+                  });
+              } else {
+                  rest(currentVal.value);
+              }
+          });
+      });
   </script>
 </body>
 </html>

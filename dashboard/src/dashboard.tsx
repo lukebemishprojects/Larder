@@ -15,7 +15,6 @@ import {createStore, unwrap} from "solid-js/store";
 
 // Safari (perhaps all webkit browsers?) does not currently support this without a polyfill
 import { Temporal } from 'temporal-polyfill'
-import {DELETE, Icon} from "./icons";
 import {Delete} from "./HeaderButtons";
 
 const root = document.getElementById('root');
@@ -243,11 +242,11 @@ function AccountInfo() {
 }
 
 render(() => {
-    const isAdminDashboardVisible =(context: AppContext) => {
+    const isAdminDashboardVisible = (context: AppContext) => {
         return context!.capabilities.includes("admindashboard");
     }
     return <App entries={[
-        new AppInternalEntry("Account information", () => "Account information", AccountInfo),
+        new AppInternalEntry("Account Information", () => "Account Information", AccountInfo),
         new AppInternalEntry("Namespaces", () => "Namespaces", NamespaceList),
         new AppInternalEntry("Tokens", () => "Tokens", TokensList),
         new AppInternalEntry("Deployments", () => "Deployments", () => <></>),

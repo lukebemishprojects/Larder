@@ -114,7 +114,7 @@ public class Larder {
                 ctx.status(e.getStatus());
                 if (isHtml(ctx)) {
                     var userRoles = oidcAuthenticator.userRoles(ctx);
-                    if (userRoles != null && userRoles.isEmpty()) {
+                    if (userRoles.isEmpty()) {
                         oidcAuthenticator.fillLoginRedirect(ctx);
                         return;
                     }
@@ -165,7 +165,7 @@ public class Larder {
                     get("logout", oidcAuthenticator::requestLogout);
 
                     path("admin", List.of(Role.Builtin.ADMIN), () -> {
-                        path("api", () -> {
+                        path("api", Set.of(Role.Builtin.SAME_ORIGIN, Role.Builtin.SSA_CSRF_CHECKED), () -> {
                             get("users", Api::listUsers);
                             get("repositories", ApiRepositories::listRepositories);
                             get("repositories/{repositoryName}", ApiRepositories::getRepository);
@@ -185,7 +185,7 @@ public class Larder {
                             post("backends", ApiBackends::createBackend);
                         });
                     });
-                    path("api", () -> {
+                    path("api", Set.of(Role.Builtin.SAME_ORIGIN, Role.Builtin.SSA_CSRF_CHECKED), () -> {
                         get("whoami", Api::whoAmI);
                         get("whatcanido", Api::whatCanIDo);
                         get("namespaces/{user}/list", Api::listNamespaces);
@@ -301,15 +301,16 @@ public class Larder {
     private void authenticate(Context context) {
         var requiredRoles = context.routeRoles();
         var maybeUserRoles = oidcAuthenticator.userRoles(context);
-        if (maybeUserRoles == null) {
-            if (requiredRoles.isEmpty()) {
-                return;
-            }
-            throw new ForbiddenResponse();
-        }
         var userRoles = new HashSet<RouteRole>(maybeUserRoles);
         if (userRoles.containsAll(requiredRoles)) {
             return; // User has all required roles to access
+        }
+        var missingRoles = new HashSet<>(requiredRoles);
+        missingRoles.removeAll(userRoles);
+        missingRoles.remove(Role.Builtin.SAME_ORIGIN);
+        if (missingRoles.isEmpty()) {
+            // The user is logged in, but fails permissions checks
+            throw new ForbiddenResponse();
         }
         throw new UnauthorizedResponse();
     }

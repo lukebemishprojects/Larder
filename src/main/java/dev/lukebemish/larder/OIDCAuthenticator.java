@@ -66,6 +66,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -391,11 +392,11 @@ final class OIDCAuthenticator {
         context.cookie(new Cookie(
             SESSION_TOKEN_COOKIE, userJwt,
             "/", -1, true, true,
-            null, SameSite.STRICT
+            null, SameSite.LAX
         ));
         context.cookie(new Cookie(
             SESSION_TOKEN_EXPIRY_COOKIE, Long.toString(expiresBefore),
-            SESSION_TOKEN_EXPIRY_PATH, -1, false, false,
+            "/", -1, false, false,
             null, SameSite.STRICT
         ));
         context.cookie(new Cookie(
@@ -565,27 +566,35 @@ final class OIDCAuthenticator {
 
     private static final String SESSION_TOKEN_COOKIE = "session_token";
     private static final String SESSION_TOKEN_EXPIRY_COOKIE = "session_token_expiry";
-    private static final String SESSION_TOKEN_EXPIRY_PATH = "/refresh/does-not-exist";
     private static final String REFRESH_TOKEN_COOKIE = "refresh_token";
     private static final String REFRESH_TOKEN_PATH = "/refresh";
 
-    public @Nullable Set<? extends Role> userRoles(Context context) {
+    public Set<? extends Role> userRoles(Context context) {
         if (context.attribute(Larder.AUTH_INFO_KEY) instanceof Larder.AuthInfo authInfo) {
             return authInfo.roles();
         }
         var sessionJwt = context.cookie(SESSION_TOKEN_COOKIE);
         if (sessionJwt != null) {
-            var allowsCrossSite = context.path().equals("/signin");
-
             var secFetchSite = context.header("Sec-Fetch-Site");
-            if (!allowsCrossSite && !"same-origin".equals(secFetchSite) && !"same-site".equals(secFetchSite) && !"none".equals(secFetchSite)) {
-                return null;
-            }
+            var sameOrigin = "same-origin".equals(secFetchSite);
+
+            var csrfTokenCookie = context.cookie("csrf_token");
+            var csrfTokenHeader = context.header("X-CSRF-Token");
+            var ssaCsrfChecked = csrfTokenCookie != null && csrfTokenCookie.equals(csrfTokenHeader);
 
             var info = parseUserJwt(sessionJwt);
             if (info != null) {
                 context.attribute(Larder.AUTH_INFO_KEY, info);
-                return info.roles();
+                var roles = new HashSet<Role>(info.roles());
+                if (sameOrigin) {
+                    roles.add(Role.Builtin.SAME_ORIGIN);
+                }
+                if (ssaCsrfChecked) {
+                    // TODO: figure out a better approach, to enforce _explicitly_ the /dashboard path calling this
+                    //  (this should not be relevant now, but will matter when I start serving javadoc)
+                    roles.add(Role.Builtin.SSA_CSRF_CHECKED);
+                }
+                return Set.copyOf(roles);
             }
         }
 

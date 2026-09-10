@@ -97,8 +97,10 @@ final class Api {
                 case Role.Builtin builtin -> switch (builtin) {
                     case ADMIN -> UserCapability.ADMIN_DASHBOARD;
                     case USER -> UserCapability.DASHBOARD;
+                    default -> null;
                 };
             })
+            .filter(Objects::nonNull)
             .collect(Collectors.toSet())
         );
     }
@@ -264,7 +266,7 @@ final class Api {
                 throw new NotFoundResponse("User not found");
             }
             var userNamespace = new UserNamespace(userId, namespace, true);
-            var existing = c.select(new UserNamespace.ByUser(userId));
+            var existing = c.select(new UserNamespace.ByPair(userId, namespace));
             if (existing.isEmpty()) {
                 c.insert(userNamespace);
             } else {
