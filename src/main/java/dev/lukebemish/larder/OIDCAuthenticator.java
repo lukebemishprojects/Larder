@@ -23,6 +23,7 @@ import io.javalin.http.BadRequestResponse;
 import io.javalin.http.Context;
 import io.javalin.http.Cookie;
 import io.javalin.http.ForbiddenResponse;
+import io.javalin.http.Header;
 import io.javalin.http.HttpStatus;
 import io.javalin.http.NotFoundResponse;
 import io.javalin.http.SameSite;
@@ -277,7 +278,7 @@ final class OIDCAuthenticator {
                 token = (OpenIdOAuth2AccessToken) oauth2service.getAccessToken(new AccessTokenRequestParams(code)
                     .addExtraParameter("redirect_uri", this.redirectUrl));
             } catch (OAuth2AccessTokenErrorResponse e) {
-                logger.debug("Failed to acquire access token", e);
+                logger.debug("Failed to acquire access token");
                 throw new BadRequestResponse("Authentication failed");
             }
 
@@ -439,6 +440,7 @@ final class OIDCAuthenticator {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        context.header(Header.CACHE_CONTROL, "no-cache");
         context.html(writer.toString());
     }
 
@@ -480,8 +482,8 @@ final class OIDCAuthenticator {
             try {
                 oidcToken = (OpenIdOAuth2AccessToken) oauth2service.refreshAccessToken(token.get().refreshToken());
             } catch (OAuth2AccessTokenErrorResponse e) {
-                logger.debug("Failed to acquire access token", e);
-                throw new BadRequestResponse("Authentication failed");
+                logger.debug("Failed to acquire access token for {}", token.get().owner().id());
+                throw new ForbiddenResponse(); // It probably just expired
             }
 
             setupSessionFromOIDC(context, oidcToken);

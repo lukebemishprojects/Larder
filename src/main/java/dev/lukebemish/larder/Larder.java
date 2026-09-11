@@ -247,6 +247,7 @@ public class Larder {
         } else {
             ctx.json(apiError);
         }
+        ctx.header(Header.VARY, Header.ACCEPT);
     }
 
     static boolean isHtml(Context ctx) {

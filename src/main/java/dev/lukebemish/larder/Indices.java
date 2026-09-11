@@ -5,6 +5,7 @@ import dev.lukebemish.larder.schema.Repository;
 import dev.lukebemish.larder.schema.RepositoryIndex;
 import dev.lukebemish.larder.api.IndexEntry;
 import io.javalin.http.Context;
+import io.javalin.http.Header;
 import io.javalin.http.NotFoundResponse;
 import io.javalin.openapi.ContentType;
 import io.javalin.openapi.HttpMethod;
@@ -102,7 +103,7 @@ public class Indices {
                     throw new NotFoundResponse();
                 }
             }
-            return new ArrayList<>(context.appData(Larder.CONNECTION_KEY).select(new RepositoryIndex.ByRepositoryAndPath(
+            return new ArrayList<>(c.select(new RepositoryIndex.ByRepositoryAndPath(
                 Identifier.of(repository.getFirst()), path
             )));
         });
@@ -123,6 +124,7 @@ public class Indices {
         } else {
             context.json(entries);
         }
+        context.header(Header.VARY, Header.ACCEPT);
     }
 
     @OpenApi(
@@ -154,5 +156,6 @@ public class Indices {
         } else {
             context.json(entries);
         }
+        context.header(Header.VARY, Header.ACCEPT);
     }
 }
